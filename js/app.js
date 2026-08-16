@@ -5,9 +5,19 @@
 
 'use strict';
 
-const VERSAO = '1.0.0';
+const VERSAO = '1.1.0';
 
 const CHANGELOG = [
+  {
+    versao: '1.1.0',
+    data: '2026-08-16',
+    itens: [
+      'Nova ferramenta “Quero X volts”: diga entrada, saída e corrente e o app indica diodo, regulador ou conversor.',
+      'Nova ferramenta “Potência e calor”: quanto o componente esquenta e se precisa de dissipador.',
+      'Cálculo dos resistores do LM317, já com as cores do resistor desenhadas.',
+      'Histórico de versões nos Ajustes e número da versão embaixo do menu.'
+    ]
+  },
   {
     versao: '1.0.0',
     data: '2026-08-16',
@@ -79,6 +89,12 @@ function unidade(v, u) {
   if (a >= 1e-3) return sig(v * 1e3) + ' m' + u;
   if (a >= 1e-6) return sig(v * 1e6) + ' µ' + u;
   return sig(v) + ' ' + u;
+}
+
+/** "2026-08-16" -> "16/08/2026" */
+function dataBR(iso) {
+  const p = String(iso || '').split('-');
+  return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : String(iso || '');
 }
 
 function torrada(msg) {
@@ -1079,11 +1095,23 @@ TOOLS.ajustes = {
       'mesmo sem internet.</p>' +
     '</div>' +
     '<div class="card card-sec">' +
-      '<h3>Novidades da versão ' + esc(VERSAO) + '</h3>' +
-      CHANGELOG.map((c) =>
-        '<div class="card-sec"><div class="rotulo">' + esc(c.versao) + ' · ' + esc(c.data) + '</div>' +
-        '<ul style="margin:8px 0 0;padding-left:18px;color:var(--txt-2);font-size:14px">' +
-        c.itens.map((i) => '<li>' + esc(i) + '</li>').join('') + '</ul></div>').join('') +
+      '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">' +
+        '<h3>Histórico de versões</h3>' +
+        '<span class="pastilha">agora em <b>v' + esc(VERSAO) + '</b></span>' +
+      '</div>' +
+      '<p class="card-desc">O app se atualiza sozinho quando você abre com internet. Se achar que ' +
+      'ficou parado numa versão antiga, feche e abra de novo.</p>' +
+      '<div class="linha-tempo">' +
+        CHANGELOG.map((c, idx) =>
+          '<div class="versao-item' + (idx === 0 ? ' atual' : '') + '">' +
+            '<div class="versao-cabeca">' +
+              '<b>v' + esc(c.versao) + '</b>' +
+              '<span class="versao-data">' + esc(dataBR(c.data)) + '</span>' +
+              (idx === 0 ? '<span class="versao-selo">atual</span>' : '') +
+            '</div>' +
+            '<ul>' + c.itens.map((i) => '<li>' + esc(i) + '</li>').join('') + '</ul>' +
+          '</div>').join('') +
+      '</div>' +
     '</div>' +
     '<div class="card card-sec">' +
       '<h3>Apagar dados</h3>' +
@@ -1149,13 +1177,386 @@ TOOLS.ajustes = {
   }
 };
 
-/* -------- 7.7 Ferramentas que ainda vão chegar --------------------------- */
+/* -------- 7.7 Quero X volts ---------------------------------------------- */
+
+/* Resistência térmica aproximada, em °C por watt dissipado.
+   São ordens de grandeza de bancada, não números de datasheet. */
+const MONTAGENS = [
+  { id: 'sem',     nome: 'Sem dissipador (TO-220 solto no ar)', rth: 62 },
+  { id: 'clipe',   nome: 'Dissipador pequeno de clipe',          rth: 25 },
+  { id: 'medio',   nome: 'Dissipador médio (aletado, ~30 mm)',   rth: 12 },
+  { id: 'grande',  nome: 'Dissipador grande com ventilação',     rth: 5 },
+  { id: 'ventoinha', nome: 'Dissipador com ventoinha',           rth: 2.5 }
+];
+
+TOOLS.quantosVolts = {
+  nome: 'Quero X volts',
+  desc: 'Diga entrada, saída e corrente; eu indico diodo, regulador ou conversor.',
+  grupo: 'energia',
+  icone: 'conversor',
+  pronto: true,
+  st: { vin: 3.7, vout: 1.5, ma: 300, bateria: true },
+
+  /** Escolhe a solução certa e explica por que as outras foram descartadas. */
+  analisar() {
+    const st = this.st;
+    const vin = st.vin, vout = st.vout, i = st.ma / 1000;
+    if (!(vin > 0) || !(vout > 0) || !(i > 0)) return { erro: 'Preencha entrada, saída e corrente com valores maiores que zero.' };
+    if (vout >= vin) {
+      return {
+        tipo: vout > vin ? 'boost' : 'igual',
+        vin: vin, vout: vout, i: i
+      };
+    }
+    const queda = vin - vout;
+    const perdaLinear = queda * i;
+    // Uma bateria de lítio cai de ~4,2 V a ~3,0 V conforme descarrega.
+    const vinMin = st.bateria ? vin * 0.81 : vin;
+    const morreNoFim = st.bateria && vinMin < vout + 0.3;
+    const rendLinear = vout / vin;
+    // Alimentado por bateria, o critério é mais duro: um linear com rendimento baixo
+    // não "só esquenta", ele encurta a autonomia na mesma proporção.
+    const limiteCalor = st.bateria ? 0.35 : 1;
+    let tipo = 'buck';
+    if (perdaLinear <= limiteCalor && !morreNoFim && (!st.bateria || rendLinear >= 0.6)) tipo = 'linear';
+    return {
+      tipo: morreNoFim ? 'buckboost' : tipo,
+      vin: vin, vout: vout, i: i, queda: queda, perdaLinear: perdaLinear,
+      vinMin: vinMin, morreNoFim: morreNoFim,
+      diodos: Math.round(queda / 0.7),
+      rendLinear: rendLinear
+    };
+  },
+
+  render() {
+    const st = this.st;
+    const a = this.analisar();
+    let bloco;
+
+    if (a.erro) {
+      bloco = nota('aviso', esc(a.erro));
+
+    } else if (a.tipo === 'igual') {
+      bloco = nota('dica', 'Entrada e saída iguais: você não precisa converter nada. ' +
+        'Se a intenção é só proteger o circuito, o que serve é um <b>diodo em série</b> contra ' +
+        'inversão de polaridade — e ele custa a você 0,3 a 0,7 V.');
+
+    } else if (a.tipo === 'boost') {
+      bloco = resultadoGrande('Use um conversor', 'BOOST', [
+        'De <b>' + sig(a.vin) + ' V</b> para <b>' + sig(a.vout) + ' V</b>',
+        'Corrente: <b>' + unidade(a.i, 'A') + '</b>'
+      ]) +
+      '<div class="card card-sec">' +
+        '<h3>Por quê</h3>' +
+        '<p class="card-desc">Você quer <b>mais</b> tensão do que tem. Nenhum resistor, diodo ou ' +
+        'regulador consegue isso — todos eles só derrubam tensão. Quem sobe tensão é o conversor ' +
+        '<i>boost</i> (step-up), que faz isso trocando corrente por tensão.</p>' +
+        conta([
+          '<span class="cmt">// a conta que importa: a entrada puxa MAIS corrente que a saída</span>',
+          'I entrada ≈ (' + sig(a.vout) + ' V × ' + sig(a.i) + ' A) ÷ (' + sig(a.vin) + ' V × 0,85)',
+          'I entrada ≈ <b>' + unidade(a.vout * a.i / (a.vin * 0.85), 'A') + '</b>',
+          '<span class="cmt">// confira se sua fonte/bateria aguenta essa corrente</span>'
+        ]) +
+      '</div>' +
+      '<div class="card card-sec"><h3>O que comprar</h3>' +
+        compra('Módulo step-up MT3608', 'modulo step up mt3608 ajustavel', 'R$ 8–15',
+               'Ajuste a saída no trimpot ANTES de ligar a carga — ele sai de fábrica em qualquer valor.') +
+        compra('Módulo step-up XL6009 (mais corrente)', 'modulo step up xl6009 4a', 'R$ 15–25') +
+      '</div>';
+
+    } else {
+      const solucoes = [];
+
+      // --- opção conversor buck
+      solucoes.push({
+        id: 'buck', nome: 'Conversor buck (step-down)',
+        bom: 'Rendimento de 85 a 92%: quase nada vira calor. Aguenta o aparelho puxar corrente variável.',
+        ruim: 'É um módulo (não um componente solto) e precisa de ajuste no trimpot antes de usar.',
+        recomendado: a.tipo === 'buck'
+      });
+
+      // --- opção regulador linear
+      solucoes.push({
+        id: 'linear', nome: 'Regulador linear (LDO / LM317)',
+        bom: 'Barato, simples, sem ruído elétrico. Ótimo para circuitos pequenos e sensíveis.',
+        ruim: 'Queima a diferença em calor: aqui seriam ' + unidade(a.perdaLinear, 'W') +
+              ', com rendimento de só ' + Math.round(a.rendLinear * 100) + '%.',
+        recomendado: a.tipo === 'linear'
+      });
+
+      // --- opção diodos
+      const quedaDiodos = a.diodos * 0.7;
+      const viavelDiodo = a.diodos >= 1 && a.diodos <= 4 && Math.abs(quedaDiodos - a.queda) < 0.35 && a.i <= 1;
+      solucoes.push({
+        id: 'diodo', nome: 'Diodos em série',
+        bom: viavelDiodo
+          ? a.diodos + ' diodo(s) 1N4007 derrubam cerca de ' + sig(quedaDiodos) + ' V. Custa centavos.'
+          : 'Só serve quando a diferença é múltipla de ~0,7 V e a corrente é baixa.',
+        ruim: 'A queda muda com a corrente e com a temperatura — não é uma tensão estável. ' +
+              'Serve para gambiarra, não para projeto.',
+        recomendado: false, inviavel: !viavelDiodo
+      });
+
+      const escolhida = a.tipo === 'buckboost' ? 'buckboost' : a.tipo;
+
+      const cabeca = a.tipo === 'buckboost'
+        ? resultadoGrande('Use um conversor', 'BUCK-BOOST', [
+            'Entrada cai até <b>' + sig(a.vinMin) + ' V</b>',
+            'Saída fixa em <b>' + sig(a.vout) + ' V</b>'
+          ])
+        : resultadoGrande('A melhor solução aqui é', escolhida === 'buck' ? 'CONVERSOR BUCK' : 'REGULADOR LINEAR', [
+            'Perda em calor: <b>' + unidade(escolhida === 'buck' ? a.vout * a.i * 0.15 : a.perdaLinear, 'W') + '</b>',
+            'Rendimento: <b>' + (escolhida === 'buck' ? '~88' : Math.round(a.rendLinear * 100)) + '%</b>'
+          ]);
+
+      // LM317: dois resistores definem a saída
+      let blocoLM = '';
+      if (escolhida === 'linear' && a.vout >= 1.25) {
+        const r1 = 240;
+        const r2ideal = (a.vout / 1.25 - 1) * r1;
+        const r2 = e24Proximos(r2ideal).perto;
+        const voutReal = 1.25 * (1 + r2 / r1);
+        const f2 = valorParaFaixas(r2, 5, 4);
+        blocoLM =
+          '<div class="card card-sec">' +
+            '<h3>Se usar o LM317 (ajustável)</h3>' +
+            '<p class="card-desc">O LM317 não tem tensão fixa: quem define a saída são dois ' +
+            'resistores. Deixe R1 em 240 Ω (o valor de catálogo) e calcule R2.</p>' +
+            conta([
+              'V saída = 1,25 × (1 + R2 ÷ R1)',
+              'R2 = (' + sig(a.vout) + ' ÷ 1,25 − 1) × 240 = ' + ohm(r2ideal),
+              'valor comercial = <b>' + ohm(r2) + '</b> → saída real <b>' + sig(voutReal) + ' V</b>'
+            ]) +
+            (f2.cores ? '<div class="card-sec">' + svgResistor(f2.cores, {}) +
+              '<div class="rotulo" style="text-align:center">R2 = ' + ohm(r2) + '</div></div>' : '') +
+          '</div>';
+      }
+
+      bloco = cabeca +
+        (a.tipo === 'buckboost'
+          ? '<div class="card-sec">' + nota('aviso',
+              '<b>Atenção ao fim da carga.</b> Uma célula de lítio começa em 4,2 V e termina perto de ' +
+              '3,0 V. Para manter ' + sig(a.vout) + ' V até o fim, um conversor comum não serve: quando a ' +
+              'bateria cai abaixo da saída, ele desiste. O <i>buck-boost</i> abaixa quando a bateria está ' +
+              'cheia e levanta quando ela está fraca — a saída fica firme o tempo todo.') +
+            (a.queda < 0.8 && a.perdaLinear < 0.3
+              ? nota('dica',
+                  '<b>Tem um atalho mais simples aqui.</b> A diferença é de só ' + sig(a.queda) + ' V. ' +
+                  'Um regulador LDO de baixa queda (o <b>HT7333</b>, por exemplo, perde apenas 0,1 V) ' +
+                  'segura os ' + sig(a.vout) + ' V até a bateria chegar perto de ' + sig(a.vout + 0.1) + ' V, ' +
+                  'e depois acompanha a bateria descendo. Se o seu circuito tolerar essa queda no fim ' +
+                  '(ESP32 e a maioria dos sensores toleram), o LDO custa um terço do preço e não faz ruído.')
+              : '') +
+            '</div>'
+          : '') +
+        '<div class="card card-sec">' +
+          '<h3>A conta</h3>' +
+          conta([
+            'diferença = ' + sig(a.vin) + ' V − ' + sig(a.vout) + ' V = <b>' + sig(a.queda) + ' V</b>',
+            '<span class="cmt">// num regulador linear, essa diferença toda vira calor</span>',
+            'P calor = ' + sig(a.queda) + ' V × ' + sig(a.i) + ' A = <b>' + unidade(a.perdaLinear, 'W') + '</b>',
+            '<span class="cmt">// num conversor buck, a energia é "empacotada", não queimada</span>',
+            'I entrada ≈ (' + sig(a.vout) + ' × ' + sig(a.i) + ') ÷ (' + sig(a.vin) + ' × 0,88) = ' +
+              unidade(a.vout * a.i / (a.vin * 0.88), 'A')
+          ]) +
+          (a.perdaLinear > 1
+            ? '<div class="card-sec">' + nota('aviso',
+                '<b>' + unidade(a.perdaLinear, 'W') + ' de calor é muita coisa.</b> Isso é o que um ' +
+                'regulador linear teria que dissipar aqui — pense num ferro de solda pequeno encostado no ' +
+                'componente. Por isso a resposta é conversor, não regulador.') + '</div>'
+            : '') +
+        '</div>' +
+        blocoLM +
+        '<div class="card card-sec">' +
+          '<h3>As três saídas possíveis</h3>' +
+          solucoes.map((s) =>
+            '<div class="card-sec" style="border-left:3px solid ' +
+              (s.recomendado || (a.tipo === 'buckboost' && s.id === 'buck') ? 'var(--ciano)' : 'var(--linha)') +
+              ';padding-left:12px">' +
+              '<b>' + esc(s.nome) + (s.recomendado ? ' — recomendado' : (s.inviavel ? ' — não serve aqui' : '')) + '</b>' +
+              '<div class="card-desc">✓ ' + esc(s.bom) + '</div>' +
+              '<div class="card-desc">✗ ' + esc(s.ruim) + '</div>' +
+            '</div>').join('') +
+        '</div>' +
+        '<div class="card card-sec"><h3>O que comprar</h3>' +
+          (a.tipo === 'buckboost'
+            ? compra('Módulo buck-boost automático', 'modulo conversor buck boost automatico step up down', 'R$ 20–35')
+            : '') +
+          (escolhida === 'buck' || a.tipo === 'buckboost'
+            ? compra('Módulo step-down MP1584EN (miniatura)', 'modulo step down mp1584en mini', 'R$ 8–14',
+                     'Ajuste a saída com o multímetro no trimpot antes de ligar a carga.') +
+              compra('Módulo step-down LM2596 (com display)', 'modulo lm2596 step down ajustavel', 'R$ 12–25')
+            : '') +
+          (escolhida === 'linear'
+            ? (Math.abs(a.vout - 3.3) < 0.05
+                ? compra('Regulador HT7333 (3,3 V, ideal para bateria)', 'ht7333 regulador 3.3v to-92', 'R$ 3–8 cada')
+                : '') +
+              (Math.abs(a.vout - 5) < 0.05
+                ? compra('Regulador AMS1117-5.0', 'ams1117 5v modulo regulador', 'R$ 5–12')
+                : '') +
+              compra('LM317 (ajustável) + resistores', 'lm317 to-220 regulador ajustavel', 'R$ 3–8 cada')
+            : '') +
+          (viavelDiodo ? compra(a.diodos + '× diodo 1N4007', 'diodo 1n4007 100 pecas', 'R$ 10–18 o pacote') : '') +
+        '</div>';
+    }
+
+    return '' +
+    cabecalho('Quero X volts', 'Diga o que você tem e o que precisa; eu digo qual peça resolve.') +
+    nota('dica', '<b>Resistor não entra aqui.</b> Resistor limita corrente, não define tensão. ' +
+      'Para alimentar alguma coisa com menos volts, a resposta é sempre diodo, regulador ou conversor — ' +
+      'nunca dois resistores.') +
+    '<div class="card card-sec">' +
+      '<div class="campos">' +
+        '<div class="campo"><label for="qvin">Tensão que eu tenho (V)</label>' +
+          '<div class="dupla">' +
+            '<input type="number" id="qvin" step="any" min="0" value="' + st.vin + '">' +
+            '<select id="qfp"><option value="">exemplos</option>' +
+              FONTES.map((f) => '<option value="' + f.v + '">' + esc(f.nome) + '</option>').join('') +
+            '</select>' +
+          '</div>' +
+        '</div>' +
+        '<div class="campo"><label for="qvout">Tensão que eu quero (V)</label>' +
+          '<input type="number" id="qvout" step="any" min="0" value="' + st.vout + '"></div>' +
+        '<div class="campo"><label for="qma">Corrente da carga (mA)</label>' +
+          '<input type="number" id="qma" step="any" min="0" value="' + st.ma + '">' +
+          '<span class="ajuda">Está na etiqueta do aparelho. Na dúvida, chute alto.</span></div>' +
+        '<div class="campo"><label for="qbat">A entrada é bateria?</label>' +
+          '<select id="qbat">' +
+            '<option value="1"' + (st.bateria ? ' selected' : '') + '>Sim — a tensão cai ao descarregar</option>' +
+            '<option value="0"' + (!st.bateria ? ' selected' : '') + '>Não — é fonte de tomada</option>' +
+          '</select></div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="card-sec">' + bloco + '</div>';
+  },
+
+  mount(raiz) {
+    const self = this;
+    const pega = () => {
+      self.st.vin = num($('#qvin', raiz).value) || 0;
+      self.st.vout = num($('#qvout', raiz).value) || 0;
+      self.st.ma = num($('#qma', raiz).value) || 0;
+      self.st.bateria = $('#qbat', raiz).value === '1';
+      rerender();
+    };
+    ['#qvin', '#qvout', '#qma', '#qbat'].forEach((s) => {
+      const el = $(s, raiz);
+      if (el) el.addEventListener('change', pega);
+    });
+    const fp = $('#qfp', raiz);
+    if (fp) fp.addEventListener('change', () => {
+      if (!fp.value) return;
+      $('#qvin', raiz).value = fp.value;
+      pega();
+    });
+  }
+};
+
+/* -------- 7.8 Potência e calor ------------------------------------------- */
+
+TOOLS.dissipacao = {
+  nome: 'Potência e calor',
+  desc: 'Quanto o componente esquenta e se ele precisa de dissipador.',
+  grupo: 'energia',
+  icone: 'regua',
+  pronto: true,
+  st: { v: 6.7, i: 300, montagem: 'sem', ambiente: 30 },
+
+  render() {
+    const st = this.st;
+    const p = st.v * (st.i / 1000);
+    const m = MONTAGENS.filter((x) => x.id === st.montagem)[0] || MONTAGENS[0];
+    const subida = p * m.rth;
+    const temp = st.ambiente + subida;
+
+    let veredito, classe;
+    if (temp <= 60) { veredito = 'Frio. Nem esquenta direito — pode encostar o dedo.'; classe = ''; }
+    else if (temp <= 85) { veredito = 'Morno. Normal e seguro, mas quente ao toque.'; classe = ''; }
+    else if (temp <= 110) { veredito = 'Quente demais para o conforto. Funciona, mas envelhece rápido e queima o dedo.'; classe = 'aviso'; }
+    else if (temp <= 150) { veredito = 'No limite. A maioria dos componentes desliga sozinha por proteção térmica aqui.'; classe = 'aviso'; }
+    else { veredito = 'Vai queimar. Nenhum semicondutor comum sobrevive a essa temperatura.'; classe = 'perigo'; }
+
+    const precisaMelhor = temp > 85;
+    const melhor = MONTAGENS.filter((x) => st.ambiente + p * x.rth <= 85)[0];
+
+    return '' +
+    cabecalho('Potência e calor', 'Todo watt que não vira trabalho vira calor. Aqui você vê quanto.') +
+    '<div class="card">' +
+      '<div class="campos">' +
+        '<div class="campo"><label for="dv">Tensão em cima do componente (V)</label>' +
+          '<input type="number" id="dv" step="any" min="0" value="' + st.v + '">' +
+          '<span class="ajuda">Num regulador: entrada menos saída.</span></div>' +
+        '<div class="campo"><label for="di">Corrente que passa (mA)</label>' +
+          '<input type="number" id="di" step="any" min="0" value="' + st.i + '"></div>' +
+        '<div class="campo"><label for="dm">Como está montado</label>' +
+          '<select id="dm">' + MONTAGENS.map((x) =>
+            '<option value="' + x.id + '"' + (st.montagem === x.id ? ' selected' : '') + '>' +
+            esc(x.nome) + '</option>').join('') + '</select></div>' +
+        '<div class="campo"><label for="da">Temperatura ambiente (°C)</label>' +
+          '<input type="number" id="da" step="any" value="' + st.ambiente + '">' +
+          '<span class="ajuda">Dentro de uma caixa fechada, some uns 15 °C.</span></div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="card-sec">' +
+      resultadoGrande('O componente vai chegar a', sig(temp, 3) + ' °C', [
+        'Calor gerado: <b>' + unidade(p, 'W') + '</b>',
+        'Subida: <b>+' + sig(subida, 3) + ' °C</b>',
+        'Ambiente: <b>' + sig(st.ambiente, 3) + ' °C</b>'
+      ]) +
+    '</div>' +
+    '<div class="card-sec">' + nota(classe, '<b>' + esc(veredito) + '</b>') + '</div>' +
+    (precisaMelhor
+      ? '<div class="card-sec">' + nota('dica', melhor
+          ? 'Com <b>' + esc(melhor.nome.toLowerCase()) + '</b> a temperatura cairia para cerca de <b>' +
+            sig(st.ambiente + p * melhor.rth, 3) + ' °C</b>, que é seguro.'
+          : 'Nem com ventoinha isso fica seguro. ' + unidade(p, 'W') + ' é calor demais para dissipar ' +
+            'desse jeito — troque a solução: um conversor <i>buck</i> no lugar do regulador linear ' +
+            'geraria menos de um décimo desse calor.') + '</div>'
+      : '') +
+    '<div class="card card-sec">' +
+      '<h3>A conta</h3>' +
+      conta([
+        '<span class="cmt">// calor gerado</span>',
+        'P = V × I = ' + sig(st.v) + ' V × ' + sig(st.i / 1000) + ' A = <b>' + unidade(p, 'W') + '</b>',
+        '<span class="cmt">// cada montagem esquenta X graus por watt (resistência térmica)</span>',
+        'subida = P × ' + m.rth + ' °C/W = <b>' + sig(subida, 3) + ' °C</b>',
+        'temperatura = ambiente + subida = ' + sig(st.ambiente, 3) + ' + ' + sig(subida, 3) +
+          ' = <b>' + sig(temp, 3) + ' °C</b>'
+      ]) +
+      '<p class="card-desc">Os valores de °C/W aqui são ordens de grandeza de bancada, boas para decidir ' +
+      '“precisa ou não precisa de dissipador”. Para um projeto sério, pegue o número exato no datasheet ' +
+      'do componente e do dissipador.</p>' +
+    '</div>' +
+    '<div class="card card-sec">' +
+      '<h3>O que comprar</h3>' +
+      compra('Dissipador de alumínio para TO-220', 'dissipador aluminio to-220 kit', 'R$ 15–30 o kit') +
+      compra('Pasta térmica', 'pasta termica seringa', 'R$ 8–20',
+             'Sem pasta, metade do dissipador não serve para nada — o ar entre as peças isola.') +
+    '</div>' +
+    nota('aviso', '<b>Um detalhe que pega muita gente:</b> na maioria dos reguladores TO-220 a aba ' +
+      'metálica é <b>ligada eletricamente</b> a um dos pinos. Se você parafusar dois deles no mesmo ' +
+      'dissipador sem isolador de mica, criou um curto.');
+  },
+
+  mount(raiz) {
+    const self = this;
+    const pega = () => {
+      self.st.v = num($('#dv', raiz).value) || 0;
+      self.st.i = num($('#di', raiz).value) || 0;
+      self.st.montagem = $('#dm', raiz).value;
+      self.st.ambiente = num($('#da', raiz).value) || 0;
+      rerender();
+    };
+    ['#dv', '#di', '#dm', '#da'].forEach((s) => {
+      const el = $(s, raiz);
+      if (el) el.addEventListener('change', pega);
+    });
+  }
+};
+
+/* -------- 7.9 Ferramentas que ainda vão chegar --------------------------- */
 
 const EM_BREVE = [
-  { id: 'quantosVolts', nome: 'Quero X volts', grupo: 'energia', icone: 'conversor', entrega: 2,
-    desc: 'Diga entrada, saída e corrente; eu indico diodo, regulador ou conversor buck.' },
-  { id: 'dissipacao', nome: 'Potência e calor', grupo: 'energia', icone: 'regua', entrega: 2,
-    desc: 'Quanto o componente esquenta e se precisa de dissipador.' },
   { id: 'pack', nome: 'Montador de pack 18650', grupo: 'baterias', icone: 'pack', entrega: 3,
     desc: 'Série e paralelo: quantos volts, quantos mAh, quanta corrente.' },
   { id: 'bms', nome: 'BMS e carregador', grupo: 'baterias', icone: 'escudo', entrega: 3,
@@ -1300,7 +1701,8 @@ function desenharNav() {
       '<button class="rail-btn' + (ativo === g.id ? ' ativo' : '') + '" data-grupo="' + g.id + '" ' +
         'aria-label="' + esc(g.nome) + '">' + icone(g.icone) +
         '<span class="rail-dica">' + esc(g.nome) + '</span></button>'
-    ).join('');
+    ).join('') +
+    '<a class="rail-versao" href="#/t/ajustes" title="Histórico de versões">v' + esc(VERSAO) + '</a>';
 
   $('#tabbar').innerHTML = GRUPOS.filter((g) => g.tabbar).map((g) =>
     '<button class="' + (ativo === g.id ? 'ativo' : '') + '" data-grupo="' + g.id + '">' +

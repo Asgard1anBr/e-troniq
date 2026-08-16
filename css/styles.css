@@ -152,6 +152,21 @@ button, input, select, textarea {
 
 .rail-espaco { flex: 1; }
 
+.rail-versao {
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .02em;
+  color: var(--txt-3);
+  text-decoration: none;
+  padding: 3px 8px;
+  border-radius: 99px;
+  border: 1px solid var(--linha);
+  transition: color .15s, border-color .15s;
+}
+
+.rail-versao:hover { color: var(--ciano); border-color: rgba(34, 211, 238, .4); }
+
 .rail-dica {
   position: absolute;
   left: calc(100% + 10px);
@@ -627,6 +642,68 @@ textarea { min-height: 110px; resize: vertical; font-family: var(--mono); font-s
 }
 
 .compra .copiar:hover { color: var(--txt); border-color: var(--linha-forte); }
+
+/* ---------- histórico de versões ----------------------------------------- */
+
+.linha-tempo { margin-top: 14px; }
+
+.versao-item {
+  position: relative;
+  padding: 0 0 18px 20px;
+  border-left: 2px solid var(--linha);
+}
+
+.versao-item:last-child { padding-bottom: 0; border-left-color: transparent; }
+
+.versao-item::before {
+  content: "";
+  position: absolute;
+  left: -7px;
+  top: 5px;
+  width: 12px;
+  height: 12px;
+  border-radius: 99px;
+  background: var(--bg);
+  border: 3px solid var(--linha-forte);
+}
+
+/* o pad do logo marca a versão atual */
+.versao-item.atual::before {
+  border-color: var(--ciano);
+  box-shadow: 0 0 10px rgba(34, 211, 238, .55);
+}
+
+.versao-cabeca {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.versao-cabeca b { font-family: var(--mono); font-size: 15px; }
+
+.versao-data { font-size: 12.5px; color: var(--txt-3); }
+
+.versao-selo {
+  font-size: 10.5px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: linear-gradient(135deg, rgba(34, 211, 238, .18), rgba(168, 85, 247, .18));
+  color: var(--ciano);
+  border: 1px solid rgba(34, 211, 238, .3);
+}
+
+.versao-item ul {
+  margin: 7px 0 0;
+  padding-left: 16px;
+  color: var(--txt-2);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.versao-item li { margin-bottom: 3px; }
 
 /* ---------- tabela --------------------------------------------------------*/
 

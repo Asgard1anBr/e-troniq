@@ -22,8 +22,8 @@ para backup e para levar os dados de um aparelho a outro.
 | Resistores | Resistor para LED | ✅ |
 | Resistores | Divisor de tensão | ✅ |
 | Energia | Lei de Ohm e potência | ✅ |
-| Energia | Quero X volts (diodo / LDO / buck) | entrega 2 |
-| Energia | Potência e calor | entrega 2 |
+| Energia | Quero X volts (diodo / LDO / buck) | ✅ |
+| Energia | Potência e calor | ✅ |
 | Baterias | Montador de pack 18650 (série/paralelo) | entrega 3 |
 | Baterias | BMS e carregador (TP4056, R_prog) | entrega 3 |
 | Baterias | Autonomia | entrega 3 |

@@ -83,7 +83,7 @@ em `#app`. Sem roteador externo.
 
 1. **Entrega 1** — esqueleto, PWA, navegação, Resistores (decodificar, valor→cores,
    resistor de LED, divisor), Lei de Ohm, Ajustes com export/import. ✅
-2. **Entrega 2** — Quero X volts (diodo/LDO/buck), potência e dissipação.
+2. **Entrega 2** — Quero X volts (diodo/LDO/buck), potência e dissipação. ✅
 3. **Entrega 3** — Pack 18650 S/P, BMS e carregador (TP4056 R_prog), autonomia,
    Assistente de recuperação de aparelho.
 4. **Entrega 4** — Protoboard Arduino (biblioteca + ponte de IA), consulta rápida
@@ -109,5 +109,7 @@ em `#app`. Sem roteador externo.
 
 ## Versão atual
 
-- Versão: 1.0.0
-- Cache SW: `etroniq-v1`
+- Versão: 1.1.0
+- Cache SW: `etroniq-v2`
+- O histórico de versões vive no array `CHANGELOG` (app.js) e é renderizado em Ajustes.
+  A versão também aparece embaixo do menu lateral (`.rail-versao`), linkando para Ajustes.
