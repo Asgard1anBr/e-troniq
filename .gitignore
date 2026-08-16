@@ -1,0 +1,5 @@
+# nada de build neste projeto — só arquivos estáticos
+Thumbs.db
+desktop.ini
+.DS_Store
+*.log

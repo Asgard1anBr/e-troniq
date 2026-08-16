@@ -1,0 +1,19 @@
+{
+  "name": "E-TronIQ — assistente de eletrônica",
+  "short_name": "E-TronIQ",
+  "description": "Resistores, baterias 18650, BMS, carregadores e Arduino explicados de forma visual e simples.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0B0E14",
+  "theme_color": "#0B0E14",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "categories": ["utilities", "education", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
