@@ -5,9 +5,20 @@
 
 'use strict';
 
-const VERSAO = '1.2.0';
+const VERSAO = '1.3.0';
 
 const CHANGELOG = [
+  {
+    versao: '1.3.0',
+    data: '2026-08-16',
+    itens: [
+      'Protoboard Arduino: 8 montagens prontas, desenhadas furo a furo, com código para copiar.',
+      'Ponte de IA: o app monta o pedido, você cola no seu assistente e traz a resposta de volta — ele desenha.',
+      'Consulta rápida: pinagem do Uno/Nano, código de capacitor, resistor SMD e bitola de fio.',
+      'Meus projetos: salve os circuitos neste aparelho.',
+      'Com isso, as 14 ferramentas da versão 1 estão prontas.'
+    ]
+  },
   {
     versao: '1.2.0',
     data: '2026-08-16',
@@ -406,6 +417,245 @@ function svgPack(s, p, cor) {
   return '<div class="rolagem"><svg class="palco-pack" viewBox="0 0 ' + larg + ' ' + alt + '" ' +
     'width="' + larg + '" role="img" aria-label="Pack ' + s + 'S' + p + 'P">' +
     barras + ligacoes + cels + terminais + corte + '</svg></div>';
+}
+
+/* ---------- protoboard ---------------------------------------------------- */
+
+/* Geometria da protoboard desenhada. 30 colunas é o suficiente e cabe na tela. */
+const PB = {
+  colunas: 30, passo: 22, x0: 46,
+  railMais: 30, railMenos: 52,
+  linhas: { j: 92, i: 114, h: 136, g: 158, f: 180, e: 216, d: 238, c: 260, b: 282, a: 304 },
+  railMaisB: 344, railMenosB: 366,
+  alturaPlaca: 150, folgaPlaca: 40
+};
+
+PB.largura = PB.x0 + PB.colunas * PB.passo + 30;
+PB.altura = PB.railMenosB + 30;
+
+/** Converte uma referência ("e5", "+12", "-3") em coordenadas na protoboard. */
+function pontoProtoboard(ref) {
+  const r = String(ref || '').trim().toLowerCase();
+  const m = r.match(/^([a-j+-])\s*(\d{1,2})$/);
+  if (!m) return null;
+  const linha = m[1], col = parseInt(m[2], 10);
+  if (col < 1 || col > PB.colunas) return null;
+  const x = PB.x0 + (col - 1) * PB.passo;
+  let y;
+  if (linha === '+') y = PB.railMais;
+  else if (linha === '-') y = PB.railMenos;
+  else y = PB.linhas[linha];
+  if (y == null) return null;
+  return { x: x, y: y + PB.alturaPlaca + PB.folgaPlaca, col: col, linha: linha };
+}
+
+/* Pinos do Arduino que o app reconhece. */
+const PINOS_ARDUINO = ['5V', '3V3', 'GND', 'VIN',
+  'D0', 'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9', 'D10', 'D11', 'D12', 'D13',
+  'A0', 'A1', 'A2', 'A3', 'A4', 'A5'];
+
+const ehPinoArduino = (n) => PINOS_ARDUINO.indexOf(String(n || '').trim().toUpperCase()) >= 0;
+
+/* Peças que o app sabe desenhar. */
+const PECAS = {
+  resistor:      { pinos: 2, rotulo: 'Resistor' },
+  led:           { pinos: 2, rotulo: 'LED' },
+  botao:         { pinos: 2, rotulo: 'Botão' },
+  potenciometro: { pinos: 3, rotulo: 'Potenciômetro' },
+  ldr:           { pinos: 2, rotulo: 'LDR' },
+  buzzer:        { pinos: 2, rotulo: 'Buzzer' },
+  capacitor:     { pinos: 2, rotulo: 'Capacitor' },
+  diodo:         { pinos: 2, rotulo: 'Diodo' },
+  transistor:    { pinos: 3, rotulo: 'Transistor' },
+  ds18b20:       { pinos: 3, rotulo: 'DS18B20' },
+  servo_sg90:    { pinos: 3, rotulo: 'Servo SG90' },
+  hc_sr04:       { pinos: 4, rotulo: 'HC-SR04' },
+  ssd1306:       { pinos: 4, rotulo: 'Display OLED' },
+  rele_1ch:      { pinos: 3, rotulo: 'Módulo relé' },
+  dht11:         { pinos: 3, rotulo: 'DHT11' }
+};
+
+const CORES_FIO = {
+  vermelho: '#e03131', preto: '#2b3038', preta: '#2b3038',
+  azul: '#1c7ed6', verde: '#2f9e44', amarelo: '#f2c53d', laranja: '#f2820c',
+  branco: '#e8ecf3', roxo: '#8b5cf6', violeta: '#8b5cf6', cinza: '#9aa1ad', marrom: '#7a4a2b'
+};
+
+const corFio = (n) => CORES_FIO[String(n || '').toLowerCase()] || '#9aa1ad';
+
+/** Desenha um componente entre seus pinos. */
+function desenharPeca(c) {
+  const pts = (c.pinos || []).map(pontoProtoboard).filter(Boolean);
+  if (!pts.length) return '';
+  const tipo = c.tipo;
+  const rot = c.rotulo || (PECAS[tipo] ? PECAS[tipo].rotulo : tipo);
+
+  // pernas até os furos
+  let pernas = pts.map((p) =>
+    '<circle cx="' + p.x + '" cy="' + p.y + '" r="3.5" fill="#cbd3e0"/>').join('');
+
+  const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+  const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+
+  if (tipo === 'resistor' && pts.length === 2) {
+    const a = pts[0], b = pts[1];
+    const ang = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+    const comp = Math.hypot(b.x - a.x, b.y - a.y);
+    const corpo = Math.max(26, comp - 16);
+    let faixas = '';
+    const cores = (c.faixas && c.faixas.length ? c.faixas : ['marrom', 'preto', 'vermelho', 'dourado']);
+    cores.slice(0, 4).forEach((cc, i) => {
+      const co = corPorId(cc);
+      faixas += '<rect x="' + (-corpo / 2 + 5 + i * 6) + '" y="-8" width="3.5" height="16" ' +
+        'fill="' + (co ? co.hex : '#555') + '"/>';
+    });
+    return '<g>' +
+      '<path d="M' + a.x + ' ' + a.y + ' L' + b.x + ' ' + b.y + '" stroke="#cbd3e0" stroke-width="2.5"/>' +
+      '<g transform="translate(' + cx + ',' + cy + ') rotate(' + ang + ')">' +
+        '<rect x="' + (-corpo / 2) + '" y="-9" width="' + corpo + '" height="18" rx="7" fill="#cdb98d" stroke="#8a7a5c"/>' +
+        faixas +
+      '</g>' + pernas + '</g>';
+  }
+
+  if (tipo === 'led' && pts.length === 2) {
+    const cor = corPorId(c.cor || 'vermelho');
+    const hex = cor ? cor.hex : '#e03131';
+    return '<g>' +
+      '<path d="M' + pts[0].x + ' ' + pts[0].y + ' L' + cx + ' ' + cy + ' L' + pts[1].x + ' ' + pts[1].y + '" ' +
+        'stroke="#cbd3e0" stroke-width="2.5" fill="none"/>' +
+      '<circle cx="' + cx + '" cy="' + (cy - 12) + '" r="11" fill="' + hex + '" fill-opacity=".85" stroke="' + hex + '"/>' +
+      '<circle cx="' + (cx - 3) + '" cy="' + (cy - 15) + '" r="3" fill="#fff" opacity=".5"/>' +
+      pernas + '</g>';
+  }
+
+  if (tipo === 'botao') {
+    return '<g>' +
+      '<rect x="' + (cx - 17) + '" y="' + (cy - 17) + '" width="34" height="34" rx="4" fill="#2a313d" stroke="#4a5464"/>' +
+      '<circle cx="' + cx + '" cy="' + cy + '" r="9" fill="#c9d2e0"/>' + pernas + '</g>';
+  }
+
+  if (tipo === 'potenciometro') {
+    return '<g>' +
+      '<rect x="' + (cx - 20) + '" y="' + (cy - 26) + '" width="40" height="30" rx="5" fill="#1c7ed6" fill-opacity=".35" stroke="#1c7ed6"/>' +
+      '<circle cx="' + cx + '" cy="' + (cy - 11) + '" r="10" fill="#2a313d" stroke="#c9d2e0"/>' +
+      '<path d="M' + cx + ' ' + (cy - 19) + ' v6" stroke="#c9d2e0" stroke-width="2.5"/>' +
+      pernas + '</g>';
+  }
+
+  // qualquer módulo: caixa rotulada com os pinos embaixo
+  const larg = Math.max(78, (pts.length - 1) * PB.passo + 40);
+  return '<g>' +
+    '<rect x="' + (cx - larg / 2) + '" y="' + (cy - 46) + '" width="' + larg + '" height="40" rx="6" ' +
+      'fill="#141922" stroke="#22d3ee" stroke-opacity=".55"/>' +
+    '<text x="' + cx + '" y="' + (cy - 21) + '" text-anchor="middle" font-size="12" fill="#e8ecf3">' +
+      esc(rot) + '</text>' +
+    pts.map((p) => '<path d="M' + p.x + ' ' + (cy - 6) + ' V' + p.y + '" stroke="#cbd3e0" stroke-width="2"/>').join('') +
+    pernas + '</g>';
+}
+
+/** Desenha o Arduino, a protoboard e os fios entre eles. */
+function svgProtoboard(circ) {
+  const comps = circ.componentes || [];
+  const ligs = circ.ligacoes || [];
+
+  // pinos do Arduino realmente usados, distribuídos na borda de baixo da placa
+  const usados = [];
+  ligs.forEach((l) => {
+    [l.de, l.para].forEach((n) => {
+      const up = String(n || '').trim().toUpperCase();
+      if (ehPinoArduino(up) && usados.indexOf(up) < 0) usados.push(up);
+    });
+  });
+  const ordem = PINOS_ARDUINO.filter((p) => usados.indexOf(p) >= 0);
+  const px0 = 90, pxFim = PB.largura - 90;
+  const passoP = ordem.length > 1 ? (pxFim - px0) / (ordem.length - 1) : 0;
+  const yPino = PB.alturaPlaca - 6;
+  const posPino = {};
+  ordem.forEach((p, i) => { posPino[p] = ordem.length > 1 ? px0 + i * passoP : (px0 + pxFim) / 2; });
+
+  const ponto = (nome) => {
+    const up = String(nome || '').trim().toUpperCase();
+    if (posPino[up] != null) return { x: posPino[up], y: yPino, placa: true };
+    return pontoProtoboard(nome);
+  };
+
+  // --- placa Arduino
+  let placa =
+    '<g>' +
+      '<rect x="60" y="18" width="' + (PB.largura - 120) + '" height="' + (PB.alturaPlaca - 30) + '" rx="12" ' +
+        'fill="#0f3b3a" stroke="#22d3ee" stroke-opacity=".4"/>' +
+      '<text x="' + (PB.largura / 2) + '" y="62" text-anchor="middle" font-size="17" font-weight="700" ' +
+        'fill="#7de3ef" font-family="monospace">' + esc(circ.placa === 'arduino_nano' ? 'ARDUINO NANO' : 'ARDUINO UNO') + '</text>' +
+      '<text x="' + (PB.largura / 2) + '" y="84" text-anchor="middle" font-size="12" fill="#5fa8ae">' +
+        esc(circ.titulo || 'circuito') + '</text>' +
+      ordem.map((p) =>
+        '<g>' +
+          '<rect x="' + (posPino[p] - 15) + '" y="' + (yPino - 22) + '" width="30" height="20" rx="4" ' +
+            'fill="#0b1a1c" stroke="#22d3ee" stroke-opacity=".5"/>' +
+          '<text x="' + posPino[p] + '" y="' + (yPino - 8) + '" text-anchor="middle" font-size="11" ' +
+            'fill="#9fe8f0" font-family="monospace">' + esc(p) + '</text>' +
+          '<circle cx="' + posPino[p] + '" cy="' + yPino + '" r="3.5" fill="#c9d2e0"/>' +
+        '</g>').join('') +
+    '</g>';
+
+  // --- protoboard
+  const dy = PB.alturaPlaca + PB.folgaPlaca;
+  let furos = '', trilhos = '';
+  const larguraPB = PB.largura;
+
+  trilhos +=
+    '<rect x="20" y="' + (dy + 10) + '" width="' + (larguraPB - 40) + '" height="' + (PB.railMenosB + 12 - 10) + '" ' +
+      'rx="10" fill="#e9ecf2" fill-opacity=".93"/>' +
+    '<path d="M30 ' + (dy + PB.railMais - 12) + ' H' + (larguraPB - 30) + '" stroke="#e03131" stroke-width="2"/>' +
+    '<path d="M30 ' + (dy + PB.railMenos + 12) + ' H' + (larguraPB - 30) + '" stroke="#2b3038" stroke-width="2"/>' +
+    '<path d="M30 ' + (dy + PB.railMaisB - 12) + ' H' + (larguraPB - 30) + '" stroke="#e03131" stroke-width="2"/>' +
+    '<path d="M30 ' + (dy + PB.railMenosB + 12) + ' H' + (larguraPB - 30) + '" stroke="#2b3038" stroke-width="2"/>' +
+    // canaleta central
+    '<rect x="26" y="' + (dy + 190) + '" width="' + (larguraPB - 52) + '" height="14" rx="3" fill="#c9cfda"/>';
+
+  const linhasTodas = ['+', '-'].map((l) => ({ l: l, y: l === '+' ? PB.railMais : PB.railMenos }))
+    .concat(Object.keys(PB.linhas).map((l) => ({ l: l, y: PB.linhas[l] })))
+    .concat([{ l: '+', y: PB.railMaisB }, { l: '-', y: PB.railMenosB }]);
+
+  linhasTodas.forEach((row) => {
+    for (let c = 0; c < PB.colunas; c++) {
+      const x = PB.x0 + c * PB.passo;
+      furos += '<rect x="' + (x - 3.5) + '" y="' + (dy + row.y - 3.5) + '" width="7" height="7" rx="1.5" ' +
+        'fill="#9aa3b2" fill-opacity=".85"/>';
+    }
+  });
+
+  // letras e números de referência
+  let refs = '';
+  ['j', 'f', 'e', 'a'].forEach((l) => {
+    refs += '<text x="30" y="' + (dy + PB.linhas[l] + 4) + '" font-size="11" fill="#5d6675" ' +
+      'font-family="monospace" text-anchor="middle">' + l + '</text>';
+  });
+  for (let c = 0; c < PB.colunas; c += 5) {
+    refs += '<text x="' + (PB.x0 + c * PB.passo) + '" y="' + (dy + PB.linhas.f - 14) + '" font-size="10" ' +
+      'fill="#5d6675" font-family="monospace" text-anchor="middle">' + (c + 1) + '</text>';
+  }
+
+  // --- fios
+  let fios = '';
+  ligs.forEach((l) => {
+    const a = ponto(l.de), b = ponto(l.para);
+    if (!a || !b) return;
+    const cor = corFio(l.cor);
+    const dist = Math.abs(b.y - a.y);
+    const cvA = a.placa ? a.y + Math.min(60, dist / 2) : a.y - Math.min(50, dist / 2);
+    const cvB = b.placa ? b.y + Math.min(60, dist / 2) : b.y - Math.min(50, dist / 2);
+    fios += '<path d="M' + a.x + ' ' + a.y + ' C' + a.x + ' ' + cvA + ', ' + b.x + ' ' + cvB + ', ' + b.x + ' ' + b.y + '" ' +
+      'stroke="' + cor + '" stroke-width="3" fill="none" stroke-linecap="round" opacity=".95"/>' +
+      '<circle cx="' + a.x + '" cy="' + a.y + '" r="3" fill="' + cor + '"/>' +
+      '<circle cx="' + b.x + '" cy="' + b.y + '" r="3" fill="' + cor + '"/>';
+  });
+
+  const pecas = comps.map(desenharPeca).join('');
+
+  return '<div class="rolagem"><svg class="palco-pb" viewBox="0 0 ' + larguraPB + ' ' + (dy + PB.altura) + '" ' +
+    'width="' + larguraPB + '" role="img" aria-label="Montagem na protoboard">' +
+    trilhos + furos + refs + placa + fios + pecas + '</svg></div>';
 }
 
 /** Anel de progresso com gradiente da marca. */
@@ -2290,16 +2540,805 @@ TOOLS.recuperar = {
   }
 };
 
-/* -------- 7.13 Ferramentas que ainda vão chegar -------------------------- */
+/* -------- 7.13 Protoboard Arduino ---------------------------------------- */
 
-const EM_BREVE = [
-  { id: 'protoboard', nome: 'Protoboard Arduino', grupo: 'arduino', icone: 'chip', entrega: 4,
-    desc: 'Circuitos montados e desenhados, com o código pronto para copiar.' },
-  { id: 'consulta', nome: 'Consulta rápida', grupo: 'arduino', icone: 'livro', entrega: 4,
-    desc: 'Pinagem, capacitores, código SMD e bitola de fio.' },
-  { id: 'projetos', nome: 'Meus projetos', grupo: 'ajustes', icone: 'pasta', entrega: 4,
-    desc: 'Salve seus cálculos e monte listas de compras.' }
+/* Biblioteca de montagens prontas. Cada coluna da protoboard (1 a 30) liga entre si
+   as linhas a–e e, separadamente, as linhas f–j. Por isso duas pernas de um mesmo
+   componente ficam sempre em colunas diferentes. */
+const BIBLIOTECA = [
+  {
+    id: 'blink', titulo: 'LED piscando', placa: 'arduino_uno',
+    resumo: 'O "olá mundo" do Arduino: um LED acende e apaga sozinho.',
+    componentes: [
+      { id: 'led1', tipo: 'led', cor: 'vermelho', pinos: ['e10', 'e12'] },
+      { id: 'r1', tipo: 'resistor', rotulo: '220 Ω', faixas: ['vermelho', 'vermelho', 'marrom', 'dourado'], pinos: ['a12', 'a15'] }
+    ],
+    ligacoes: [
+      { de: 'D13', para: 'b10', cor: 'vermelho' },
+      { de: 'b15', para: 'GND', cor: 'preto' }
+    ],
+    avisos: ['O lado chato do LED (perna curta) é o negativo, e é ele que vai para o resistor.'],
+    codigo: [
+      'const int LED = 13;',
+      '',
+      'void setup() {',
+      '  pinMode(LED, OUTPUT);',
+      '}',
+      '',
+      'void loop() {',
+      '  digitalWrite(LED, HIGH);',
+      '  delay(500);',
+      '  digitalWrite(LED, LOW);',
+      '  delay(500);',
+      '}'
+    ].join('\n')
+  },
+  {
+    id: 'botao', titulo: 'Botão acende LED', placa: 'arduino_uno',
+    resumo: 'Lê um botão e acende o LED enquanto ele estiver apertado.',
+    componentes: [
+      { id: 'sw1', tipo: 'botao', pinos: ['e5', 'e8'] },
+      { id: 'r1', tipo: 'resistor', rotulo: '10 kΩ', faixas: ['marrom', 'preto', 'laranja', 'dourado'], pinos: ['a8', 'a11'] },
+      { id: 'led1', tipo: 'led', cor: 'verde', pinos: ['e20', 'e22'] },
+      { id: 'r2', tipo: 'resistor', rotulo: '220 Ω', faixas: ['vermelho', 'vermelho', 'marrom', 'dourado'], pinos: ['a22', 'a25'] }
+    ],
+    ligacoes: [
+      { de: '5V', para: 'b5', cor: 'vermelho' },
+      { de: 'D2', para: 'c8', cor: 'amarelo' },
+      { de: 'b11', para: 'GND', cor: 'preto' },
+      { de: 'D13', para: 'b20', cor: 'verde' },
+      { de: 'b25', para: 'GND', cor: 'preto' }
+    ],
+    avisos: ['O resistor de 10 kΩ é o "pull-down": sem ele o pino fica solto no ar e lê lixo, ' +
+             'acendendo o LED sozinho.'],
+    codigo: [
+      'const int BOTAO = 2;',
+      'const int LED = 13;',
+      '',
+      'void setup() {',
+      '  pinMode(BOTAO, INPUT);',
+      '  pinMode(LED, OUTPUT);',
+      '}',
+      '',
+      'void loop() {',
+      '  if (digitalRead(BOTAO) == HIGH) {',
+      '    digitalWrite(LED, HIGH);',
+      '  } else {',
+      '    digitalWrite(LED, LOW);',
+      '  }',
+      '}'
+    ].join('\n')
+  },
+  {
+    id: 'pot', titulo: 'Potenciômetro controla o brilho', placa: 'arduino_uno',
+    resumo: 'Girar o botão muda a intensidade do LED. Mostra leitura analógica e PWM.',
+    componentes: [
+      { id: 'p1', tipo: 'potenciometro', rotulo: '10 kΩ', pinos: ['e5', 'e6', 'e7'] },
+      { id: 'led1', tipo: 'led', cor: 'azul', pinos: ['e15', 'e17'] },
+      { id: 'r1', tipo: 'resistor', rotulo: '220 Ω', faixas: ['vermelho', 'vermelho', 'marrom', 'dourado'], pinos: ['a17', 'a20'] }
+    ],
+    ligacoes: [
+      { de: '5V', para: 'a5', cor: 'vermelho' },
+      { de: 'A0', para: 'a6', cor: 'amarelo' },
+      { de: 'GND', para: 'a7', cor: 'preto' },
+      { de: 'D9', para: 'b15', cor: 'azul' },
+      { de: 'b20', para: 'GND', cor: 'preto' }
+    ],
+    avisos: ['O pino do meio do potenciômetro é o que varia; os das pontas vão em 5 V e GND.',
+             'Só os pinos 3, 5, 6, 9, 10 e 11 do Uno fazem PWM (têm o símbolo ~).'],
+    codigo: [
+      'const int POT = A0;',
+      'const int LED = 9;   // precisa ser um pino com ~ (PWM)',
+      '',
+      'void setup() {',
+      '  pinMode(LED, OUTPUT);',
+      '  Serial.begin(9600);',
+      '}',
+      '',
+      'void loop() {',
+      '  int leitura = analogRead(POT);        // 0 a 1023',
+      '  int brilho  = map(leitura, 0, 1023, 0, 255);',
+      '  analogWrite(LED, brilho);',
+      '  Serial.println(leitura);',
+      '  delay(50);',
+      '}'
+    ].join('\n')
+  },
+  {
+    id: 'ldr', titulo: 'Sensor de luz (LDR)', placa: 'arduino_uno',
+    resumo: 'Acende o LED quando escurece. Usa divisor de tensão — aqui ele é legítimo.',
+    componentes: [
+      { id: 'ldr1', tipo: 'ldr', rotulo: 'LDR', pinos: ['e5', 'e8'] },
+      { id: 'r1', tipo: 'resistor', rotulo: '10 kΩ', faixas: ['marrom', 'preto', 'laranja', 'dourado'], pinos: ['a8', 'a11'] },
+      { id: 'led1', tipo: 'led', cor: 'branco', pinos: ['e20', 'e22'] },
+      { id: 'r2', tipo: 'resistor', rotulo: '220 Ω', faixas: ['vermelho', 'vermelho', 'marrom', 'dourado'], pinos: ['a22', 'a25'] }
+    ],
+    ligacoes: [
+      { de: '5V', para: 'b5', cor: 'vermelho' },
+      { de: 'A0', para: 'c8', cor: 'amarelo' },
+      { de: 'b11', para: 'GND', cor: 'preto' },
+      { de: 'D13', para: 'b20', cor: 'branco' },
+      { de: 'b25', para: 'GND', cor: 'preto' }
+    ],
+    avisos: ['Este é o uso correto do divisor de tensão: a entrada analógica quase não puxa corrente.',
+             'Ajuste o valor 500 no código conforme a luz do seu ambiente — use o Monitor Serial para ver.'],
+    codigo: [
+      'const int LDR = A0;',
+      'const int LED = 13;',
+      'const int LIMITE = 500;  // ajuste olhando o Monitor Serial',
+      '',
+      'void setup() {',
+      '  pinMode(LED, OUTPUT);',
+      '  Serial.begin(9600);',
+      '}',
+      '',
+      'void loop() {',
+      '  int luz = analogRead(LDR);',
+      '  Serial.println(luz);',
+      '  digitalWrite(LED, luz < LIMITE ? HIGH : LOW);',
+      '  delay(100);',
+      '}'
+    ].join('\n')
+  },
+  {
+    id: 'ds18b20', titulo: 'Termômetro DS18B20', placa: 'arduino_uno',
+    resumo: 'Mede temperatura com precisão e mostra no Monitor Serial.',
+    componentes: [
+      { id: 't1', tipo: 'ds18b20', pinos: ['e5', 'e6', 'e7'] },
+      { id: 'r1', tipo: 'resistor', rotulo: '4,7 kΩ', faixas: ['amarelo', 'violeta', 'vermelho', 'dourado'], pinos: ['a6', 'a10'] }
+    ],
+    ligacoes: [
+      { de: 'GND', para: 'b5', cor: 'preto' },
+      { de: 'D2', para: 'c6', cor: 'amarelo' },
+      { de: '5V', para: 'b7', cor: 'vermelho' },
+      { de: 'b10', para: '5V', cor: 'vermelho' }
+    ],
+    avisos: ['O resistor de 4,7 kΩ entre o pino de dados e o 5 V é obrigatório — sem ele o sensor ' +
+             'simplesmente não responde.',
+             'Olhando o lado chato do sensor, com os pinos para baixo: GND, dados, 5 V.'],
+    codigo: [
+      '#include <OneWire.h>          // biblioteca OneWire 2.3.7',
+      '#include <DallasTemperature.h> // biblioteca DallasTemperature 3.9.0',
+      '',
+      'OneWire barramento(2);',
+      'DallasTemperature sensor(&barramento);',
+      '',
+      'void setup() {',
+      '  Serial.begin(9600);',
+      '  sensor.begin();',
+      '}',
+      '',
+      'void loop() {',
+      '  sensor.requestTemperatures();',
+      '  Serial.print("Temperatura: ");',
+      '  Serial.print(sensor.getTempCByIndex(0));',
+      '  Serial.println(" C");',
+      '  delay(1000);',
+      '}'
+    ].join('\n')
+  },
+  {
+    id: 'servo', titulo: 'Servo SG90', placa: 'arduino_uno',
+    resumo: 'Faz o servo varrer de 0 a 180 graus.',
+    componentes: [
+      { id: 's1', tipo: 'servo_sg90', pinos: ['e5', 'e6', 'e7'] }
+    ],
+    ligacoes: [
+      { de: 'GND', para: 'b5', cor: 'marrom' },
+      { de: '5V', para: 'b6', cor: 'vermelho' },
+      { de: 'D9', para: 'b7', cor: 'laranja' }
+    ],
+    avisos: ['Um servo só pode sair do 5 V do Arduino se for pequeno e sem carga. Com esforço ele ' +
+             'puxa picos que derrubam a placa e reiniciam o programa — aí use fonte separada de 5 V, ' +
+             'com o GND ligado junto ao do Arduino.',
+             'Os fios do SG90: marrom = GND, vermelho = 5 V, laranja = sinal.'],
+    codigo: [
+      '#include <Servo.h>   // biblioteca que já vem com a IDE',
+      '',
+      'Servo motor;',
+      '',
+      'void setup() {',
+      '  motor.attach(9);',
+      '}',
+      '',
+      'void loop() {',
+      '  for (int a = 0; a <= 180; a++) {',
+      '    motor.write(a);',
+      '    delay(15);',
+      '  }',
+      '  for (int a = 180; a >= 0; a--) {',
+      '    motor.write(a);',
+      '    delay(15);',
+      '  }',
+      '}'
+    ].join('\n')
+  },
+  {
+    id: 'hcsr04', titulo: 'Sensor de distância HC-SR04', placa: 'arduino_uno',
+    resumo: 'Mede distância por ultrassom, de 2 cm a 4 metros.',
+    componentes: [
+      { id: 'u1', tipo: 'hc_sr04', pinos: ['e5', 'e6', 'e7', 'e8'] }
+    ],
+    ligacoes: [
+      { de: '5V', para: 'a5', cor: 'vermelho' },
+      { de: 'D9', para: 'a6', cor: 'amarelo' },
+      { de: 'D10', para: 'a7', cor: 'verde' },
+      { de: 'GND', para: 'a8', cor: 'preto' }
+    ],
+    avisos: ['A ordem dos pinos no módulo é VCC, Trig, Echo, GND — está escrito na plaquinha.'],
+    codigo: [
+      'const int TRIG = 9;',
+      'const int ECHO = 10;',
+      '',
+      'void setup() {',
+      '  pinMode(TRIG, OUTPUT);',
+      '  pinMode(ECHO, INPUT);',
+      '  Serial.begin(9600);',
+      '}',
+      '',
+      'void loop() {',
+      '  digitalWrite(TRIG, LOW);',
+      '  delayMicroseconds(2);',
+      '  digitalWrite(TRIG, HIGH);',
+      '  delayMicroseconds(10);',
+      '  digitalWrite(TRIG, LOW);',
+      '',
+      '  long tempo = pulseIn(ECHO, HIGH);',
+      '  float cm = tempo * 0.0343 / 2;  // som: 343 m/s, ida e volta',
+      '',
+      '  Serial.print(cm);',
+      '  Serial.println(" cm");',
+      '  delay(200);',
+      '}'
+    ].join('\n')
+  },
+  {
+    id: 'rele', titulo: 'Módulo relé', placa: 'arduino_uno',
+    resumo: 'Liga e desliga um aparelho de verdade a partir do Arduino.',
+    componentes: [
+      { id: 'k1', tipo: 'rele_1ch', pinos: ['e5', 'e6', 'e7'] }
+    ],
+    ligacoes: [
+      { de: '5V', para: 'b5', cor: 'vermelho' },
+      { de: 'D7', para: 'b6', cor: 'amarelo' },
+      { de: 'GND', para: 'b7', cor: 'preto' }
+    ],
+    avisos: ['A maioria dos módulos relé é acionada em nível BAIXO: LOW liga, HIGH desliga. ' +
+             'Se o seu funcionar ao contrário, inverta no código.',
+             'O lado do relé que chaveia a tomada é rede elétrica: 127 ou 220 V mata. Se você não ' +
+             'tem prática com isso, use o relé só em 12 V ou chame um eletricista.'],
+    codigo: [
+      'const int RELE = 7;',
+      '',
+      'void setup() {',
+      '  pinMode(RELE, OUTPUT);',
+      '  digitalWrite(RELE, HIGH);  // começa desligado (módulos comuns são invertidos)',
+      '}',
+      '',
+      'void loop() {',
+      '  digitalWrite(RELE, LOW);   // liga',
+      '  delay(3000);',
+      '  digitalWrite(RELE, HIGH);  // desliga',
+      '  delay(3000);',
+      '}'
+    ].join('\n')
+  }
 ];
+
+/** Extrai o primeiro objeto JSON de um texto que pode vir cheio de prosa em volta. */
+function extrairJSON(texto) {
+  const t = String(texto || '');
+  const cerca = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidatos = [];
+  if (cerca) candidatos.push(cerca[1]);
+  // varredura por chaves balanceadas, do primeiro "{" em diante
+  const ini = t.indexOf('{');
+  if (ini >= 0) {
+    let nivel = 0, dentroTexto = false, escapado = false;
+    for (let i = ini; i < t.length; i++) {
+      const ch = t[i];
+      if (dentroTexto) {
+        if (escapado) escapado = false;
+        else if (ch === '\\') escapado = true;
+        else if (ch === '"') dentroTexto = false;
+        continue;
+      }
+      if (ch === '"') dentroTexto = true;
+      else if (ch === '{') nivel++;
+      else if (ch === '}') {
+        nivel--;
+        if (nivel === 0) { candidatos.push(t.slice(ini, i + 1)); break; }
+      }
+    }
+  }
+  for (let i = 0; i < candidatos.length; i++) {
+    try { return { ok: true, dados: JSON.parse(candidatos[i]) }; } catch (e) { /* tenta o próximo */ }
+  }
+  return { ok: false, erro: 'Não achei um bloco JSON válido na resposta. ' +
+    'Confira se você copiou a resposta inteira, incluindo o trecho entre ```json e ```.' };
+}
+
+/** Confere se o circuito recebido é desenhável, com mensagem clara quando não é. */
+function validarCircuito(c) {
+  if (!c || typeof c !== 'object') return 'O JSON não é um objeto.';
+  if (!Array.isArray(c.componentes)) return 'Faltou a lista "componentes".';
+  if (!Array.isArray(c.ligacoes)) return 'Faltou a lista "ligacoes".';
+  const desconhecidas = [];
+  for (let i = 0; i < c.componentes.length; i++) {
+    const p = c.componentes[i];
+    if (!p || !p.tipo) return 'O componente ' + (i + 1) + ' está sem "tipo".';
+    if (!PECAS[p.tipo] && desconhecidas.indexOf(p.tipo) < 0) desconhecidas.push(p.tipo);
+    if (!Array.isArray(p.pinos) || !p.pinos.length) return 'O componente "' + p.tipo + '" está sem "pinos".';
+    for (let j = 0; j < p.pinos.length; j++) {
+      if (!pontoProtoboard(p.pinos[j])) {
+        return 'O componente "' + p.tipo + '" tem o furo "' + p.pinos[j] + '", que não existe. ' +
+          'Os furos vão de a1 a j30, mais os trilhos +1 a +30 e -1 a -30.';
+      }
+    }
+  }
+  if (desconhecidas.length) {
+    return 'Não sei desenhar: ' + desconhecidas.join(', ') + '. ' +
+      'Peça ao assistente para usar só as peças da lista do prompt.';
+  }
+  for (let i = 0; i < c.ligacoes.length; i++) {
+    const l = c.ligacoes[i];
+    if (!l || !l.de || !l.para) return 'A ligação ' + (i + 1) + ' está sem "de" ou "para".';
+    [l.de, l.para].forEach(function () { /* validação abaixo */ });
+    const okDe = ehPinoArduino(l.de) || pontoProtoboard(l.de);
+    const okPara = ehPinoArduino(l.para) || pontoProtoboard(l.para);
+    if (!okDe) return 'A ligação ' + (i + 1) + ' sai de "' + l.de + '", que não é pino do Arduino nem furo da protoboard.';
+    if (!okPara) return 'A ligação ' + (i + 1) + ' vai para "' + l.para + '", que não é pino do Arduino nem furo da protoboard.';
+  }
+  return null;
+}
+
+TOOLS.protoboard = {
+  nome: 'Protoboard Arduino',
+  desc: 'Circuitos montados e desenhados, com o código pronto para copiar.',
+  grupo: 'arduino',
+  icone: 'chip',
+  pronto: true,
+  st: { aba: 'biblioteca', circuito: null, pedido: '', resposta: '', erro: '', prosa: '' },
+
+  /** O contrato de saída que vai junto do pedido do usuário. */
+  montarPrompt(pedido) {
+    return (pedido || '[descreva aqui o que você quer montar]') + '\n\n' +
+      '--- CONTRATO DE SAÍDA (não altere) ---\n' +
+      'Isto vai ser desenhado por um app chamado E-TronIQ. Responda normalmente, com a sua análise ' +
+      'técnica e os avisos de segurança, e ao FINAL acrescente um bloco ```json exatamente neste formato:\n\n' +
+      '```json\n' +
+      '{\n' +
+      '  "titulo": "nome curto do circuito",\n' +
+      '  "placa": "arduino_uno",\n' +
+      '  "componentes": [\n' +
+      '    {"id":"led1","tipo":"led","cor":"vermelho","pinos":["e10","e12"]},\n' +
+      '    {"id":"r1","tipo":"resistor","rotulo":"220 Ω",\n' +
+      '     "faixas":["vermelho","vermelho","marrom","dourado"],"pinos":["a12","a15"]}\n' +
+      '  ],\n' +
+      '  "ligacoes": [\n' +
+      '    {"de":"D13","para":"b10","cor":"vermelho"},\n' +
+      '    {"de":"b15","para":"GND","cor":"preto"}\n' +
+      '  ],\n' +
+      '  "codigo": "// sketch completo, compilável, com comentários",\n' +
+      '  "bibliotecas": ["Nome 1.2.3"],\n' +
+      '  "avisos": ["frases curtas de alerta"]\n' +
+      '}\n' +
+      '```\n\n' +
+      'REGRAS DA PROTOBOARD:\n' +
+      '- Furos: letra + coluna, de a1 a j30. As linhas a–e de uma mesma coluna são ligadas entre si; ' +
+      'as linhas f–j também, e os dois blocos são separados pela canaleta central.\n' +
+      '- Por isso, as duas pernas de um mesmo componente devem ficar em COLUNAS DIFERENTES.\n' +
+      '- Trilhos de alimentação: "+1" a "+30" e "-1" a "-30".\n' +
+      '- Pinos do Arduino aceitos: ' + PINOS_ARDUINO.join(', ') + '.\n' +
+      '- Tipos de peça que sei desenhar: ' + Object.keys(PECAS).join(', ') + '.\n' +
+      '- Em "faixas" do resistor use as cores: ' + CORES.map((c) => c.id).join(', ') + '.\n' +
+      '- Cores de fio: ' + Object.keys(CORES_FIO).filter((k) => k !== 'preta').join(', ') + '.\n' +
+      '- Use no máximo 30 colunas e deixe espaço entre os componentes.\n\n' +
+      'Sou iniciante em eletrônica: explique em português simples e avise sobre qualquer risco.';
+  },
+
+  render() {
+    const st = this.st;
+    const circ = st.circuito;
+
+    const abas = '<div style="display:flex;justify-content:center;margin-bottom:16px">' +
+      '<div class="seg">' +
+        '<button class="' + (st.aba === 'biblioteca' ? 'ativo' : '') + '" data-aba="biblioteca">Montagens prontas</button>' +
+        '<button class="' + (st.aba === 'ia' ? 'ativo' : '') + '" data-aba="ia">Pedir para a IA</button>' +
+      '</div></div>';
+
+    let corpo;
+    if (st.aba === 'biblioteca') {
+      corpo = '<div class="grade">' + BIBLIOTECA.map((b) =>
+        '<button class="card" data-circ="' + b.id + '" style="' + corGrupo('arduino') + '">' +
+          '<div class="card-icone">' + icone('chip') + '</div>' +
+          '<h3>' + esc(b.titulo) + '</h3>' +
+          '<div class="card-desc">' + esc(b.resumo) + '</div>' +
+        '</button>').join('') + '</div>';
+    } else {
+      corpo =
+        '<div class="card">' +
+          '<h3>1. Descreva o que você quer</h3>' +
+          '<p class="card-desc">Escreva com suas palavras, como falaria com um amigo. ' +
+          'Exemplo: “quero um sensor de temperatura que acenda um LED vermelho se passar de 30 graus”.</p>' +
+          '<textarea id="pedido" rows="3" placeholder="quero montar...">' + esc(st.pedido) + '</textarea>' +
+          '<div class="btn-linha">' +
+            '<button class="btn primario" id="copiarPrompt">Copiar pedido pronto</button>' +
+          '</div>' +
+          '<p class="card-desc">O app monta um pedido técnico completo — com a lista de peças que ele ' +
+          'sabe desenhar e o formato exato da resposta. Cole no seu assistente de IA.</p>' +
+        '</div>' +
+        '<div class="card card-sec">' +
+          '<h3>2. Cole a resposta aqui</h3>' +
+          '<p class="card-desc">Pode colar a resposta inteira, com a explicação e tudo. ' +
+          'O app pesca só o bloco JSON e desenha; a explicação fica guardada logo abaixo.</p>' +
+          '<textarea id="resposta" rows="5" placeholder="cole aqui a resposta do assistente...">' + esc(st.resposta) + '</textarea>' +
+          '<div class="btn-linha">' +
+            '<button class="btn primario" id="desenhar">Desenhar circuito</button>' +
+            '<button class="btn" id="limparIA">Limpar</button>' +
+          '</div>' +
+        '</div>' +
+        (st.erro ? '<div class="card-sec">' + nota('aviso', '<b>Não consegui desenhar.</b> ' + esc(st.erro)) + '</div>' : '');
+    }
+
+    let resultado = '';
+    if (circ) {
+      resultado =
+        '<div class="card card-sec">' +
+          '<h3>' + esc(circ.titulo || 'Circuito') + '</h3>' +
+          svgProtoboard(circ) +
+          '<p class="card-desc">Os fios saem dos pinos do Arduino e vão até os furos da protoboard. ' +
+          'Furos da mesma coluna, no mesmo bloco de linhas, já estão ligados por dentro.</p>' +
+        '</div>' +
+        (circ.avisos && circ.avisos.length
+          ? '<div class="card-sec">' + nota('aviso', circ.avisos.map(esc).join('<br><br>')) + '</div>'
+          : '') +
+        '<div class="card card-sec">' +
+          '<h3>Lista de ligações</h3>' +
+          '<div class="rolagem"><table class="tabela">' +
+            '<tr><th>De</th><th>Para</th><th>Cor do fio</th></tr>' +
+            (circ.ligacoes || []).map((l) =>
+              '<tr><td class="num">' + esc(l.de) + '</td><td class="num">' + esc(l.para) + '</td>' +
+              '<td><span class="cor-bolha" style="display:inline-block;vertical-align:-4px;margin-right:7px;' +
+              'background:' + corFio(l.cor) + '"></span>' + esc(l.cor || 'qualquer') + '</td></tr>').join('') +
+          '</table></div>' +
+        '</div>' +
+        (circ.codigo
+          ? '<div class="card card-sec">' +
+              '<h3>Código para o Arduino</h3>' +
+              (circ.bibliotecas && circ.bibliotecas.length
+                ? '<p class="card-desc">Instale antes, no menu <b>Sketch → Incluir Biblioteca → Gerenciar ' +
+                  'Bibliotecas</b>: ' + circ.bibliotecas.map(esc).join(', ') + '.</p>'
+                : '') +
+              '<pre class="codigo">' + esc(circ.codigo) + '</pre>' +
+              '<div class="btn-linha">' +
+                '<button class="btn" data-copiar="' + esc(circ.codigo) + '">Copiar código</button>' +
+                '<button class="btn" id="salvarProjeto">Salvar em Meus projetos</button>' +
+              '</div>' +
+            '</div>'
+          : '') +
+        (st.prosa
+          ? '<div class="card card-sec"><h3>O que o assistente explicou</h3>' +
+            '<div class="prosa">' + esc(st.prosa) + '</div></div>'
+          : '');
+    }
+
+    return '' +
+    cabecalho('Protoboard Arduino', 'Montagens desenhadas, com o código pronto.') +
+    abas + corpo + resultado;
+  },
+
+  mount(raiz) {
+    const self = this;
+    raiz.addEventListener('click', (ev) => {
+      const ba = ev.target.closest('[data-aba]');
+      if (ba) { self.st.aba = ba.getAttribute('data-aba'); self.st.erro = ''; rerender(); return; }
+
+      const bc = ev.target.closest('[data-circ]');
+      if (bc) {
+        const b = BIBLIOTECA.filter((x) => x.id === bc.getAttribute('data-circ'))[0];
+        if (b) { self.st.circuito = b; self.st.prosa = ''; rerender(); }
+        return;
+      }
+
+      if (ev.target.closest('#copiarPrompt')) {
+        const p = $('#pedido', raiz);
+        self.st.pedido = p ? p.value : '';
+        copiar(self.montarPrompt(self.st.pedido));
+        return;
+      }
+
+      if (ev.target.closest('#desenhar')) {
+        const r = $('#resposta', raiz);
+        self.st.resposta = r ? r.value : '';
+        const ex = extrairJSON(self.st.resposta);
+        if (!ex.ok) { self.st.erro = ex.erro; self.st.circuito = null; rerender(); return; }
+        const problema = validarCircuito(ex.dados);
+        if (problema) { self.st.erro = problema; self.st.circuito = null; rerender(); return; }
+        self.st.circuito = ex.dados;
+        self.st.erro = '';
+        // guarda a prosa: tudo que veio antes do bloco JSON
+        const corte = self.st.resposta.search(/```/);
+        self.st.prosa = corte > 0 ? self.st.resposta.slice(0, corte).trim() : '';
+        rerender();
+        return;
+      }
+
+      if (ev.target.closest('#limparIA')) {
+        self.st.resposta = ''; self.st.erro = ''; self.st.circuito = null; self.st.prosa = '';
+        rerender();
+        return;
+      }
+
+      if (ev.target.closest('#salvarProjeto')) {
+        TOOLS.projetos.salvar({
+          tipo: 'circuito',
+          nome: (self.st.circuito && self.st.circuito.titulo) || 'Circuito',
+          circuito: self.st.circuito,
+          prosa: self.st.prosa
+        });
+        return;
+      }
+    });
+  }
+};
+
+/* -------- 7.14 Consulta rápida -------------------------------------------- */
+
+const PINAGEM_UNO = [
+  ['D0 / RX', 'Recebe dados do USB. Evite usar — atrapalha o upload.'],
+  ['D1 / TX', 'Envia dados pelo USB. Mesma coisa: evite.'],
+  ['D2, D3', 'Digitais. Os únicos que aceitam interrupção (attachInterrupt).'],
+  ['D3, D5, D6', 'Digitais com PWM (símbolo ~) — servem para controlar brilho e velocidade.'],
+  ['D4, D7, D8', 'Digitais simples: liga e desliga.'],
+  ['D9, D10, D11', 'Digitais com PWM. D10 a D13 também formam o barramento SPI.'],
+  ['D12, D13', 'Digitais. O D13 já tem um LED soldado na placa.'],
+  ['A0 a A3', 'Entradas analógicas: leem de 0 a 1023. Também servem como digitais.'],
+  ['A4 / SDA', 'Dados do barramento I²C (display OLED, RTC, muitos sensores).'],
+  ['A5 / SCL', 'Relógio do barramento I²C.'],
+  ['5V', 'Saída de 5 V. Até uns 400 mA se estiver no USB.'],
+  ['3V3', 'Saída de 3,3 V. Só 50 mA — não serve para alimentar módulo faminto.'],
+  ['GND', 'Negativo. Há três deles e são todos o mesmo ponto.'],
+  ['VIN', 'Entrada de 7 a 12 V para alimentar a placa sem USB.']
+];
+
+const CAPACITORES = [
+  ['101', '100 pF', '0,1 nF'], ['102', '1 nF', '0,001 µF'], ['103', '10 nF', '0,01 µF'],
+  ['104', '100 nF', '0,1 µF'], ['105', '1 µF', '1000 nF'], ['106', '10 µF', '—'],
+  ['223', '22 nF', '0,022 µF'], ['473', '47 nF', '0,047 µF'], ['224', '220 nF', '0,22 µF']
+];
+
+const AWG = [
+  ['10', '5,26', '15 A'], ['12', '3,31', '9,3 A'], ['14', '2,08', '5,9 A'],
+  ['16', '1,31', '3,7 A'], ['18', '0,82', '2,3 A'], ['20', '0,52', '1,5 A'],
+  ['22', '0,33', '0,92 A'], ['24', '0,20', '0,58 A'], ['26', '0,13', '0,36 A'],
+  ['28', '0,08', '0,23 A']
+];
+
+TOOLS.consulta = {
+  nome: 'Consulta rápida',
+  desc: 'Pinagem, capacitores, código SMD e bitola de fio.',
+  grupo: 'arduino',
+  icone: 'livro',
+  pronto: true,
+  st: { aba: 'pinos', codCap: '104', codSmd: '103' },
+
+  /** 104 -> 100 nF */
+  lerCapacitor(cod) {
+    const c = String(cod || '').trim().toUpperCase().replace(/[^0-9RN.]/g, '');
+    if (/^\d{3}$/.test(c)) {
+      const pf = parseInt(c.slice(0, 2), 10) * Math.pow(10, parseInt(c[2], 10));
+      return { pf: pf, ok: true };
+    }
+    return { ok: false };
+  },
+
+  /** 103 -> 10 kΩ ; 1002 -> 10 kΩ ; 4R7 -> 4,7 Ω */
+  lerSmd(cod) {
+    const c = String(cod || '').trim().toUpperCase();
+    if (/^\d+R\d+$/.test(c) || /^R\d+$/.test(c)) return { ohms: num(c.replace('R', c.startsWith('R') ? '0.' : '.')), ok: true };
+    if (/^\d{3}$/.test(c)) return { ohms: parseInt(c.slice(0, 2), 10) * Math.pow(10, parseInt(c[2], 10)), ok: true };
+    if (/^\d{4}$/.test(c)) return { ohms: parseInt(c.slice(0, 3), 10) * Math.pow(10, parseInt(c[3], 10)), ok: true };
+    return { ok: false };
+  },
+
+  render() {
+    const st = this.st;
+    const cap = this.lerCapacitor(st.codCap);
+    const smd = this.lerSmd(st.codSmd);
+
+    const abas = ['pinos', 'capacitores', 'smd', 'fios'];
+    const nomes = { pinos: 'Pinagem', capacitores: 'Capacitores', smd: 'SMD', fios: 'Fios' };
+
+    let corpo = '';
+    if (st.aba === 'pinos') {
+      corpo = '<div class="card"><h3>Arduino Uno / Nano</h3>' +
+        '<div class="rolagem"><table class="tabela"><tr><th>Pino</th><th>Para que serve</th></tr>' +
+        PINAGEM_UNO.map((p) => '<tr><td class="num">' + esc(p[0]) + '</td><td>' + esc(p[1]) + '</td></tr>').join('') +
+        '</table></div></div>' +
+        '<div class="card-sec">' + nota('perigo',
+          '<b>Os limites de corrente que queimam Arduino.</b> Cada pino aguenta <b>20 mA</b> ' +
+          '(40 mA é o limite absoluto, e já é abuso). Somando todos os pinos: <b>200 mA</b>. ' +
+          'Motor, servo com carga, fita de LED e relé de bobina passam disso — precisam de fonte ' +
+          'própria, com o GND ligado junto ao do Arduino.') + '</div>';
+    } else if (st.aba === 'capacitores') {
+      corpo = '<div class="card"><h3>Decodificar código de capacitor</h3>' +
+        '<div class="campos"><div class="campo"><label for="cc">Número impresso (3 dígitos)</label>' +
+        '<input type="text" id="cc" value="' + esc(st.codCap) + '" maxlength="4"></div></div>' +
+        (cap.ok
+          ? '<div class="card-sec">' + resultadoGrande('Esse capacitor é de',
+              cap.pf >= 1e6 ? sig(cap.pf / 1e6) + ' µF' : cap.pf >= 1000 ? sig(cap.pf / 1000) + ' nF' : sig(cap.pf) + ' pF',
+              ['<b>' + sig(cap.pf) + '</b> pF', '<b>' + sig(cap.pf / 1000) + '</b> nF',
+               '<b>' + sig(cap.pf / 1e6) + '</b> µF']) + '</div>'
+          : '<div class="card-sec">' + nota('aviso', 'Digite os três números impressos no capacitor, tipo <b>104</b>.') + '</div>') +
+        '<div class="card-sec">' + conta([
+          '<span class="cmt">// os dois primeiros dígitos, seguidos de tantos zeros quanto o terceiro</span>',
+          '104 → 10 seguido de 4 zeros = 100000 pF = <b>100 nF = 0,1 µF</b>'
+        ]) + '</div>' +
+        '<div class="rolagem card-sec"><table class="tabela"><tr><th>Código</th><th>Valor</th><th>Também escrito</th></tr>' +
+        CAPACITORES.map((c) => '<tr><td class="num">' + c[0] + '</td><td class="num">' + c[1] + '</td><td class="num">' + c[2] + '</td></tr>').join('') +
+        '</table></div>' +
+        '<p class="card-desc">A letra depois do número é a tolerância: <b>J</b> = ±5%, <b>K</b> = ±10%, ' +
+        '<b>M</b> = ±20%. Capacitor eletrolítico (o cilíndrico) já vem com o valor escrito por extenso ' +
+        'e <b>tem polaridade</b>: a tarja clara marca o negativo, e ligar ao contrário faz ele estourar.</p>' +
+        '</div>';
+    } else if (st.aba === 'smd') {
+      corpo = '<div class="card"><h3>Decodificar resistor SMD</h3>' +
+        '<p class="card-desc">Aquele resistor pequenininho de superfície, que não tem cores — tem ' +
+        'números impressos em cima.</p>' +
+        '<div class="campos"><div class="campo"><label for="cs">Número impresso</label>' +
+        '<input type="text" id="cs" value="' + esc(st.codSmd) + '" maxlength="5"></div></div>' +
+        (smd.ok
+          ? '<div class="card-sec">' + resultadoGrande('Esse resistor é de', ohm(smd.ohms),
+              ['Código curto: <b>' + codigoCurto(smd.ohms) + '</b>']) + '</div>'
+          : '<div class="card-sec">' + nota('aviso', 'Tente <b>103</b>, <b>1002</b> ou <b>4R7</b>.') + '</div>') +
+        '<div class="card-sec">' + conta([
+          '<span class="cmt">// 3 dígitos: os dois primeiros + zeros</span>',
+          '103 → 10 com 3 zeros = <b>10 kΩ</b>',
+          '<span class="cmt">// 4 dígitos (mais preciso): os três primeiros + zeros</span>',
+          '1002 → 100 com 2 zeros = <b>10 kΩ</b>',
+          '<span class="cmt">// a letra R marca a vírgula</span>',
+          '4R7 = <b>4,7 Ω</b>   ·   R22 = <b>0,22 Ω</b>',
+          '<span class="cmt">// e o zero sozinho</span>',
+          '000 ou 0 = <b>fio</b>, resistência zero (serve de ponte)'
+        ]) + '</div></div>';
+    } else {
+      corpo = '<div class="card"><h3>Bitola de fio por corrente</h3>' +
+        '<div class="rolagem"><table class="tabela">' +
+        '<tr><th>AWG</th><th>Diâmetro (mm)</th><th>Corrente máxima</th></tr>' +
+        AWG.map((a) => '<tr><td class="num">' + a[0] + '</td><td class="num">' + a[1] + '</td><td class="num">' + a[2] + '</td></tr>').join('') +
+        '</table></div>' +
+        '<p class="card-desc">Números conservadores, para fio em chicote ou dentro de caixa fechada. ' +
+        'Fio solto no ar aguenta mais. Repare que o número <b>diminui</b> conforme o fio engrossa.</p>' +
+        '</div>' +
+        '<div class="card-sec">' + nota('dica',
+          '<b>Regra prática para bateria:</b> use a corrente máxima que a BMS permite, não a corrente ' +
+          'normal de uso. É no curto-circuito que o fio fino vira resistência de chuveiro.') + '</div>' +
+        '<div class="card card-sec"><h3>Cores de fio (convenção)</h3>' +
+        '<div class="rolagem"><table class="tabela">' +
+          '<tr><td><span class="cor-bolha" style="display:inline-block;vertical-align:-4px;margin-right:8px;background:#e03131"></span>Vermelho</td><td>Positivo, alimentação</td></tr>' +
+          '<tr><td><span class="cor-bolha" style="display:inline-block;vertical-align:-4px;margin-right:8px;background:#2b3038"></span>Preto</td><td>Negativo, GND</td></tr>' +
+          '<tr><td><span class="cor-bolha" style="display:inline-block;vertical-align:-4px;margin-right:8px;background:#f2c53d"></span>Amarelo</td><td>Sinal, dados</td></tr>' +
+          '<tr><td><span class="cor-bolha" style="display:inline-block;vertical-align:-4px;margin-right:8px;background:#1c7ed6"></span>Azul / verde</td><td>Sinais diversos</td></tr>' +
+        '</table></div>' +
+        '<p class="card-desc">Não é lei, é costume — mas seguir salva você de inverter polaridade às ' +
+        'duas da manhã.</p></div>';
+    }
+
+    return '' +
+    cabecalho('Consulta rápida', 'As tabelas que a gente sempre esquece.') +
+    '<div style="display:flex;justify-content:center;margin-bottom:16px"><div class="seg">' +
+      abas.map((a) => '<button class="' + (st.aba === a ? 'ativo' : '') + '" data-aba="' + a + '">' +
+        nomes[a] + '</button>').join('') +
+    '</div></div>' + corpo;
+  },
+
+  mount(raiz) {
+    const self = this;
+    raiz.addEventListener('click', (ev) => {
+      const b = ev.target.closest('[data-aba]');
+      if (b) { self.st.aba = b.getAttribute('data-aba'); rerender(); }
+    });
+    const cc = $('#cc', raiz);
+    if (cc) cc.addEventListener('input', () => { self.st.codCap = cc.value; rerender(); });
+    const cs = $('#cs', raiz);
+    if (cs) cs.addEventListener('input', () => { self.st.codSmd = cs.value; rerender(); });
+  }
+};
+
+/* -------- 7.15 Meus projetos ---------------------------------------------- */
+
+TOOLS.projetos = {
+  nome: 'Meus projetos',
+  desc: 'Salve seus circuitos e cálculos neste aparelho.',
+  grupo: 'ajustes',
+  icone: 'pasta',
+  pronto: true,
+  st: { abrindo: null },
+
+  lista() { return Store.ler('projetos', []); },
+
+  salvar(item) {
+    const l = this.lista();
+    l.unshift({
+      id: 'p' + Date.now().toString(36),
+      data: new Date().toISOString(),
+      tipo: item.tipo || 'nota',
+      nome: item.nome || 'Sem nome',
+      circuito: item.circuito || null,
+      prosa: item.prosa || ''
+    });
+    Store.gravar('projetos', l.slice(0, 60));
+    torrada('Salvo em Meus projetos');
+    rerender();
+  },
+
+  apagar(id) {
+    Store.gravar('projetos', this.lista().filter((p) => p.id !== id));
+    torrada('Projeto apagado');
+    rerender();
+  },
+
+  render() {
+    const l = this.lista();
+    const aberto = this.st.abrindo ? l.filter((p) => p.id === this.st.abrindo)[0] : null;
+
+    if (aberto) {
+      return cabecalho(aberto.nome, dataBR(aberto.data.slice(0, 10))) +
+        '<div class="btn-linha" style="margin-top:0"><button class="btn" id="voltarLista">Voltar à lista</button></div>' +
+        (aberto.circuito
+          ? '<div class="card card-sec">' + svgProtoboard(aberto.circuito) + '</div>' +
+            (aberto.circuito.codigo
+              ? '<div class="card card-sec"><h3>Código</h3><pre class="codigo">' + esc(aberto.circuito.codigo) + '</pre>' +
+                '<div class="btn-linha"><button class="btn" data-copiar="' + esc(aberto.circuito.codigo) + '">Copiar código</button></div></div>'
+              : '')
+          : '') +
+        (aberto.prosa ? '<div class="card card-sec"><h3>Anotações</h3><div class="prosa">' + esc(aberto.prosa) + '</div></div>' : '') +
+        '<div class="btn-linha"><button class="btn" data-apagar="' + esc(aberto.id) + '" ' +
+          'style="border-color:rgba(244,82,107,.4);color:var(--vermelho)">Apagar projeto</button></div>';
+    }
+
+    return cabecalho('Meus projetos', l.length + (l.length === 1 ? ' projeto salvo' : ' projetos salvos')) +
+      (l.length
+        ? '<div class="grade">' + l.map((p) =>
+            '<button class="card" data-abrir="' + esc(p.id) + '" style="' + corGrupo('ajustes') + '">' +
+              '<div class="card-icone">' + icone(p.tipo === 'circuito' ? 'chip' : 'pasta') + '</div>' +
+              '<h3>' + esc(p.nome) + '</h3>' +
+              '<div class="card-desc">' + esc(dataBR(p.data.slice(0, 10))) + '</div>' +
+            '</button>').join('') + '</div>'
+        : '<div class="card" style="text-align:center;padding:40px 20px">' +
+            '<div class="card-icone" style="margin:0 auto 16px">' + icone('pasta') + '</div>' +
+            '<h3>Nada salvo ainda</h3>' +
+            '<p class="card-desc" style="max-width:420px;margin:8px auto 0">Monte um circuito na ' +
+            '<b>Protoboard Arduino</b> e toque em “Salvar em Meus projetos”. Ele fica guardado aqui ' +
+            'neste aparelho.</p>' +
+            '<div class="btn-linha" style="justify-content:center">' +
+              '<a class="btn primario" href="#/t/protoboard">Ir para a protoboard</a></div>' +
+          '</div>') +
+      '<div class="card-sec">' + nota('dica',
+        'Isto fica salvo só neste aparelho. Para levar ao celular, use <b>Exportar</b> em Ajustes ' +
+        'e <b>Importar</b> no outro.') + '</div>';
+  },
+
+  mount(raiz) {
+    const self = this;
+    raiz.addEventListener('click', (ev) => {
+      const a = ev.target.closest('[data-abrir]');
+      if (a) { self.st.abrindo = a.getAttribute('data-abrir'); rerender(); return; }
+      if (ev.target.closest('#voltarLista')) { self.st.abrindo = null; rerender(); return; }
+      const d = ev.target.closest('[data-apagar]');
+      if (d) {
+        if (!confirm('Apagar este projeto?')) return;
+        self.st.abrindo = null;
+        self.apagar(d.getAttribute('data-apagar'));
+      }
+    });
+  }
+};
+
+/* -------- 7.16 Ferramentas que ainda vão chegar -------------------------- */
+
+const EM_BREVE = [];
 
 EM_BREVE.forEach((t) => {
   TOOLS[t.id] = {
@@ -2360,8 +3399,11 @@ function saudacao() {
 }
 
 function telaInicio() {
-  const prontas = Object.keys(TOOLS).filter((k) => TOOLS[k].pronto && TOOLS[k].grupo !== 'ajustes');
-  const total = Object.keys(TOOLS).length;
+  // "Ajustes" é tela de sistema, não conta como ferramenta.
+  const ferramentas = Object.keys(TOOLS).filter((k) => k !== 'ajustes');
+  const prontas = ferramentas.filter((k) => TOOLS[k].pronto);
+  const total = ferramentas.length;
+  const tudoPronto = prontas.length === total;
 
   let secoes = '';
   GRUPOS.filter((g) => g.id !== 'inicio').forEach((g) => {
@@ -2382,8 +3424,11 @@ function telaInicio() {
   '<div class="card" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">' +
     '<img src="icons/logo-mark.png" alt="" width="56" height="56" style="filter:drop-shadow(0 0 14px rgba(34,211,238,.35))">' +
     '<div style="flex:1;min-width:180px">' +
-      '<h3>' + prontas.length + ' de ' + (total - 1) + ' ferramentas prontas</h3>' +
-      '<div class="card-desc">O resto chega nas próximas entregas. O app se atualiza sozinho.</div>' +
+      '<h3>' + (tudoPronto ? 'As ' + total + ' ferramentas estão prontas'
+                           : prontas.length + ' de ' + total + ' ferramentas prontas') + '</h3>' +
+      '<div class="card-desc">' + (tudoPronto
+        ? 'Versão 1 completa. O app se atualiza sozinho quando você abre com internet.'
+        : 'O resto chega nas próximas entregas. O app se atualiza sozinho.') + '</div>' +
     '</div>' +
   '</div>' +
   secoes +

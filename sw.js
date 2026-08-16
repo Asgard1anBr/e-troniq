@@ -3,7 +3,7 @@
    caindo no cache apenas quando estiver offline.
    IMPORTANTE: a cada deploy, trocar o nome do CACHE abaixo. */
 
-const CACHE = 'etroniq-v3';
+const CACHE = 'etroniq-v4';
 
 const ATIVOS = [
   './',

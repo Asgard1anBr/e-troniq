@@ -586,6 +586,40 @@ textarea { min-height: 110px; resize: vertical; font-family: var(--mono); font-s
   flex: 0 0 150px;
 }
 
+.palco-pb {
+  display: block;
+  height: auto;
+  max-width: 100%;
+  margin: 10px auto 4px;
+}
+
+/* ---------- código e prosa ----------------------------------------------- */
+
+pre.codigo {
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.62;
+  background: var(--bg-2);
+  border: 1px solid var(--linha);
+  border-left: 3px solid var(--violeta);
+  border-radius: var(--r-sm);
+  padding: 14px;
+  margin: 12px 0 0;
+  overflow-x: auto;
+  color: #cfd7e4;
+  white-space: pre;
+}
+
+.prosa {
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--txt-2);
+  max-height: 420px;
+  overflow-y: auto;
+  margin-top: 10px;
+}
+
 /* ---------- avisos e notas ----------------------------------------------- */
 
 .nota {

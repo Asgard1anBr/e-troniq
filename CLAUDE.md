@@ -87,7 +87,7 @@ em `#app`. Sem roteador externo.
 3. **Entrega 3** — Pack 18650 S/P, BMS e carregador (TP4056 R_prog), autonomia,
    Assistente de recuperação de aparelho. ✅
 4. **Entrega 4** — Protoboard Arduino (biblioteca + ponte de IA), consulta rápida
-   (pinagem, capacitores, SMD, AWG), Meus projetos.
+   (pinagem, capacitores, SMD, AWG), Meus projetos. ✅
 
 ## Armadilhas conhecidas (NÃO repetir)
 
@@ -109,7 +109,7 @@ em `#app`. Sem roteador externo.
 
 ## Versão atual
 
-- Versão: 1.2.0
-- Cache SW: `etroniq-v3`
+- Versão: 1.3.0
+- Cache SW: `etroniq-v4`
 - O histórico de versões vive no array `CHANGELOG` (app.js) e é renderizado em Ajustes.
   A versão também aparece embaixo do menu lateral (`.rail-versao`), linkando para Ajustes.

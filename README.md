@@ -28,9 +28,9 @@ para backup e para levar os dados de um aparelho a outro.
 | Baterias | BMS e carregador (TP4056, R_prog) | ✅ |
 | Baterias | Autonomia | ✅ |
 | Baterias | Recuperar aparelho antigo | ✅ |
-| Arduino | Protoboard com ponte de IA | entrega 4 |
-| Arduino | Consulta rápida (pinagem, capacitores, SMD, AWG) | entrega 4 |
-| Dados | Meus projetos | entrega 4 |
+| Arduino | Protoboard com ponte de IA | ✅ |
+| Arduino | Consulta rápida (pinagem, capacitores, SMD, AWG) | ✅ |
+| Dados | Meus projetos | ✅ |
 
 ## Rodar localmente
 
