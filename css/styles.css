@@ -297,9 +297,14 @@ a.card:hover::after, button.card:hover::after { opacity: .85; }
   display: grid;
   place-items: center;
   margin-bottom: 12px;
-  background: linear-gradient(135deg, rgba(34, 211, 238, .16), rgba(168, 85, 247, .16));
-  color: var(--ciano);
-  box-shadow: inset 0 0 0 1px rgba(34, 211, 238, .18);
+  background: linear-gradient(150deg, var(--acc-fraca, rgba(34, 211, 238, .15)), transparent 130%);
+  color: var(--acc, var(--ciano));
+  box-shadow: inset 0 0 0 1px var(--acc-borda, rgba(34, 211, 238, .22));
+}
+
+a.card:hover .card-icone {
+  box-shadow: inset 0 0 0 1px var(--acc-borda, rgba(34, 211, 238, .22)),
+              0 0 18px -6px var(--acc, var(--ciano));
 }
 
 .card-icone svg { width: 21px; height: 21px; }
@@ -336,7 +341,22 @@ a.card:hover::after, button.card:hover::after { opacity: .85; }
   content: "";
   flex: 1;
   height: 1px;
-  background: linear-gradient(90deg, var(--linha), transparent);
+  background: linear-gradient(90deg, var(--acc-borda, var(--linha)), transparent);
+}
+
+/* o pad do logo como marcador de seção */
+.secao-pad {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-radius: 99px;
+  border: 2.5px solid var(--acc, var(--ciano));
+  box-shadow: 0 0 8px -1px var(--acc, var(--ciano));
+}
+
+/* hover do cartão puxa a cor do grupo */
+a.card::after, button.card::after {
+  background: linear-gradient(90deg, var(--acc, var(--ciano)), transparent 85%);
 }
 
 /* ---------- resultado em destaque --------------------------------------- */
@@ -549,6 +569,21 @@ textarea { min-height: 110px; resize: vertical; font-family: var(--mono); font-s
   border-color: rgba(34, 211, 238, .6);
   color: var(--txt);
   background: rgba(34, 211, 238, .08);
+}
+
+/* ---------- pack de bateria e anel --------------------------------------- */
+
+.palco-pack {
+  display: block;
+  height: auto;
+  max-width: 100%;
+  margin: 12px auto 4px;
+}
+
+.anel {
+  width: 150px;
+  height: 150px;
+  flex: 0 0 150px;
 }
 
 /* ---------- avisos e notas ----------------------------------------------- */

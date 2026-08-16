@@ -5,9 +5,20 @@
 
 'use strict';
 
-const VERSAO = '1.1.0';
+const VERSAO = '1.2.0';
 
 const CHANGELOG = [
+  {
+    versao: '1.2.0',
+    data: '2026-08-16',
+    itens: [
+      'Montador de pack 18650: série e paralelo com o pack desenhado célula por célula.',
+      'BMS e carregador: qual proteção usar e o resistor que programa a corrente do TP4056.',
+      'Autonomia: quanto tempo a bateria aguenta, com anel de carga útil.',
+      'Assistente de recuperação: transforma um aparelho antigo em projeto, com lista de compras.',
+      'Cada grupo de ferramentas ganhou sua própria cor nos ícones.'
+    ]
+  },
   {
     versao: '1.1.0',
     data: '2026-08-16',
@@ -189,6 +200,22 @@ const ICONES = {
   upload: '<path d="M12 20V8"/><path d="m7.5 12 4.5-4.5L16.5 12"/><path d="M4 4h16"/>'
 };
 
+/* Cor de identidade de cada grupo — discreta, só nos ícones e nos títulos de seção. */
+const CORES_GRUPO = {
+  resistores: { c: '#22d3ee', f: 'rgba(34,211,238,.15)',  b: 'rgba(34,211,238,.22)' },
+  energia:    { c: '#f5a524', f: 'rgba(245,165,36,.15)',  b: 'rgba(245,165,36,.24)' },
+  baterias:   { c: '#2fd07a', f: 'rgba(47,208,122,.15)',  b: 'rgba(47,208,122,.24)' },
+  arduino:    { c: '#a855f7', f: 'rgba(168,85,247,.15)',  b: 'rgba(168,85,247,.24)' },
+  ajustes:    { c: '#8fa0bd', f: 'rgba(143,160,189,.13)', b: 'rgba(143,160,189,.22)' },
+  inicio:     { c: '#22d3ee', f: 'rgba(34,211,238,.15)',  b: 'rgba(34,211,238,.22)' }
+};
+
+/** Variáveis CSS de cor para aplicar num elemento do grupo. */
+function corGrupo(id) {
+  const g = CORES_GRUPO[id] || CORES_GRUPO.inicio;
+  return '--acc:' + g.c + ';--acc-fraca:' + g.f + ';--acc-borda:' + g.b;
+}
+
 function icone(nome, tam) {
   const d = ICONES[nome] || ICONES.info;
   const t = tam || 24;
@@ -279,9 +306,127 @@ const FONTES = [
   { v: 12,  nome: '12 V — fonte / bateria de carro' }
 ];
 
+/* ---------- baterias ------------------------------------------------------ */
+
+/* Tensões por química, em volts por célula. */
+const QUIMICAS = {
+  liion:   { nome: 'Li-ion (18650 / 21700)', nom: 3.6, cheio: 4.2,  vazio: 3.0, corte: 2.5 },
+  lifepo4: { nome: 'LiFePO4',                nom: 3.2, cheio: 3.65, vazio: 2.5, corte: 2.0 }
+};
+
+/* Células comuns no mercado brasileiro. imax = descarga contínua segura, em A. */
+const CELULAS = [
+  { id: 'generica',  nome: '18650 comum (sem marca)',            mah: 2200, imax: 4,  quim: 'liion' },
+  { id: 'reciclada', nome: '18650 recuperada de notebook',       mah: 1800, imax: 3,  quim: 'liion' },
+  { id: 'samsung30q',nome: '18650 Samsung 30Q / LG HG2',         mah: 3000, imax: 15, quim: 'liion' },
+  { id: 'samsung35e',nome: '18650 Samsung 35E / LG MJ1',         mah: 3400, imax: 8,  quim: 'liion' },
+  { id: 'p21700',    nome: '21700 4000 mAh',                     mah: 4000, imax: 15, quim: 'liion' },
+  { id: 'lifepo4',   nome: 'LiFePO4 32700 6000 mAh',             mah: 6000, imax: 12, quim: 'lifepo4' }
+];
+
+const celulaPorId = (id) => CELULAS.filter((c) => c.id === id)[0] || CELULAS[0];
+
+/** Calcula tudo de um pack nSmP. */
+function calcularPack(cel, s, p) {
+  const q = QUIMICAS[cel.quim];
+  const ah = (cel.mah * p) / 1000;
+  return {
+    quim: q,
+    celulas: s * p,
+    vNom: q.nom * s,
+    vCheio: q.cheio * s,
+    vVazio: q.vazio * s,
+    mah: cel.mah * p,
+    ah: ah,
+    wh: q.nom * s * ah,
+    iMax: cel.imax * p,
+    s: s, p: p, cel: cel
+  };
+}
+
 /* ==========================================================================
-   4. Desenho do resistor (SVG)
+   4. Desenhos (SVG)
    ========================================================================== */
+
+/**
+ * Desenha o pack: cada coluna é um grupo em paralelo, as colunas ficam em série.
+ * @param {number} s colunas (série)  @param {number} p células por coluna (paralelo)
+ */
+function svgPack(s, p, cor) {
+  const S = Math.min(s, 10), P = Math.min(p, 6);
+  const cw = 30, ch = 64, gx = 22, gy = 12;
+  const larg = S * cw + (S - 1) * gx + 70;
+  const alt = P * ch + (P - 1) * gy + 56;
+  const x0 = 36, y0 = 26;
+  const acc = cor || '#2fd07a';
+  let cels = '', barras = '', ligacoes = '';
+
+  for (let i = 0; i < S; i++) {
+    const x = x0 + i * (cw + gx);
+    // barramentos do grupo em paralelo (positivo em cima, negativo embaixo)
+    if (P > 1) {
+      barras += '<rect x="' + (x - 4) + '" y="' + (y0 - 7) + '" width="' + (cw + 8) + '" height="5" rx="2.5" fill="' + acc + '" opacity=".55"/>' +
+                '<rect x="' + (x - 4) + '" y="' + (y0 + P * ch + (P - 1) * gy + 2) + '" width="' + (cw + 8) + '" height="5" rx="2.5" fill="#8fa0bd" opacity=".45"/>';
+    }
+    for (let j = 0; j < P; j++) {
+      const y = y0 + j * (ch + gy);
+      cels +=
+        '<g>' +
+          '<rect x="' + x + '" y="' + y + '" width="' + cw + '" height="' + ch + '" rx="7" ' +
+            'fill="#1a2029" stroke="' + acc + '" stroke-opacity=".45"/>' +
+          '<rect x="' + (x + 3) + '" y="' + (y + 4) + '" width="' + (cw - 6) + '" height="' + (ch * 0.42) + '" rx="4" ' +
+            'fill="' + acc + '" opacity=".22"/>' +
+          '<rect x="' + (x + cw / 2 - 5) + '" y="' + (y - 4) + '" width="10" height="5" rx="2" fill="#c9d2e0"/>' +
+          '<text x="' + (x + cw / 2) + '" y="' + (y + ch - 9) + '" text-anchor="middle" ' +
+            'font-size="11" fill="#8fa0bd" font-family="monospace">' + (i + 1) + '</text>' +
+        '</g>';
+      // ligação em série: negativo de uma coluna no positivo da seguinte
+      if (i < S - 1 && j === 0) {
+        ligacoes += '<path d="M' + (x + cw + 2) + ' ' + (y0 - 5) + ' h' + (gx - 4) + '" ' +
+          'stroke="' + acc + '" stroke-width="3.5" stroke-linecap="round" opacity=".8"/>';
+      }
+    }
+  }
+
+  const yMeio = y0 + (P * ch + (P - 1) * gy) / 2;
+  const xFim = x0 + (S - 1) * (cw + gx) + cw;
+  const terminais =
+    '<circle cx="16" cy="' + yMeio + '" r="8" fill="none" stroke="#f4526b" stroke-width="4"/>' +
+    '<text x="16" y="' + (yMeio + 24) + '" text-anchor="middle" font-size="12" fill="#f4526b" font-family="monospace">+</text>' +
+    '<path d="M24 ' + yMeio + ' H' + (x0 - 6) + '" stroke="#f4526b" stroke-width="2.5" opacity=".6"/>' +
+    '<circle cx="' + (larg - 16) + '" cy="' + yMeio + '" r="8" fill="none" stroke="#8fa0bd" stroke-width="4"/>' +
+    '<text x="' + (larg - 16) + '" y="' + (yMeio + 24) + '" text-anchor="middle" font-size="12" fill="#8fa0bd" font-family="monospace">−</text>' +
+    '<path d="M' + (xFim + 6) + ' ' + yMeio + ' H' + (larg - 24) + '" stroke="#8fa0bd" stroke-width="2.5" opacity=".6"/>';
+
+  const corte = (s > S || p > P)
+    ? '<text x="' + (larg / 2) + '" y="' + (alt - 6) + '" text-anchor="middle" font-size="12" fill="#8fa0bd">' +
+      'mostrando ' + S + 'S' + P + 'P de ' + s + 'S' + p + 'P</text>'
+    : '';
+
+  return '<div class="rolagem"><svg class="palco-pack" viewBox="0 0 ' + larg + ' ' + alt + '" ' +
+    'width="' + larg + '" role="img" aria-label="Pack ' + s + 'S' + p + 'P">' +
+    barras + ligacoes + cels + terminais + corte + '</svg></div>';
+}
+
+/** Anel de progresso com gradiente da marca. */
+function svgAnel(pct, valor, rotulo) {
+  const p = Math.max(0, Math.min(100, pct));
+  const r = 62, c = 2 * Math.PI * r;
+  const uid = 'a' + Math.random().toString(36).slice(2, 8);
+  return '<svg class="anel" viewBox="0 0 160 160" role="img" aria-label="' + esc(rotulo) + ': ' + Math.round(p) + '%">' +
+    '<defs><linearGradient id="g' + uid + '" x1="0" y1="0" x2="1" y2="1">' +
+      '<stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#a855f7"/></linearGradient></defs>' +
+    '<circle cx="80" cy="80" r="' + r + '" fill="none" stroke="#232b38" stroke-width="13"/>' +
+    '<circle cx="80" cy="80" r="' + r + '" fill="none" stroke="url(#g' + uid + ')" stroke-width="13" ' +
+      'stroke-linecap="round" stroke-dasharray="' + (c * p / 100) + ' ' + c + '" ' +
+      'transform="rotate(-90 80 80)"/>' +
+    '<text x="80" y="76" text-anchor="middle" font-size="30" font-weight="700" fill="#e8ecf3" ' +
+      'font-family="monospace">' + esc(valor) + '</text>' +
+    '<text x="80" y="98" text-anchor="middle" font-size="12" fill="#9aa5b8">' + esc(rotulo) + '</text>' +
+  '</svg>';
+}
+
+/* ---------- resistor ------------------------------------------------------ */
 
 /* Posição horizontal de cada faixa conforme a quantidade de faixas. */
 const LAYOUT_FAIXAS = {
@@ -1554,17 +1699,600 @@ TOOLS.dissipacao = {
   }
 };
 
-/* -------- 7.9 Ferramentas que ainda vão chegar --------------------------- */
+/* -------- 7.9 Baterias ---------------------------------------------------- */
+
+/** Bloco de segurança de lítio. Aparece em toda tela que monta pack. */
+function avisoLitio(extra) {
+  return nota('perigo',
+    '<b>Regras que não se negociam com lítio.</b> ' +
+    'Nunca monte um pack sem BMS. Nunca solde ferro direto na célula — o calor estraga a célula por ' +
+    'dentro e ela falha semanas depois; use solda ponto ou suporte com mola. Nunca misture células de ' +
+    'capacidades, marcas ou idades diferentes no mesmo grupo em paralelo. Carregue sempre supervisionado ' +
+    'e longe de coisa que pega fogo. Célula inchada, quente ou com cheiro se descarta, não se recupera.' +
+    (extra ? ' ' + extra : ''));
+}
+
+TOOLS.pack = {
+  nome: 'Montador de pack 18650',
+  desc: 'Série e paralelo: quantos volts, quantos mAh, quanta corrente.',
+  grupo: 'baterias',
+  icone: 'pack',
+  pronto: true,
+  st: { cel: 'generica', s: 4, p: 2 },
+
+  render() {
+    const st = this.st;
+    const cel = celulaPorId(st.cel);
+    const s = Math.max(1, Math.min(20, Math.floor(st.s)));
+    const p = Math.max(1, Math.min(12, Math.floor(st.p)));
+    const k = calcularPack(cel, s, p);
+    const acc = CORES_GRUPO.baterias.c;
+
+    return '' +
+    cabecalho('Montador de pack 18650', 'Escolha a célula e o arranjo; eu mostro o que esse pack vira.') +
+    '<div class="card">' +
+      '<div class="campos">' +
+        '<div class="campo"><label for="pc">Célula</label>' +
+          '<select id="pc">' + CELULAS.map((c) =>
+            '<option value="' + c.id + '"' + (st.cel === c.id ? ' selected' : '') + '>' +
+            esc(c.nome) + ' · ' + c.mah + ' mAh</option>').join('') + '</select></div>' +
+        '<div class="campo"><label for="ps">Em série (S) — soma volts</label>' +
+          '<input type="number" id="ps" min="1" max="20" step="1" value="' + s + '"></div>' +
+        '<div class="campo"><label for="pp">Em paralelo (P) — soma capacidade</label>' +
+          '<input type="number" id="pp" min="1" max="12" step="1" value="' + p + '"></div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="card-sec">' +
+      resultadoGrande('Pack ' + s + 'S' + p + 'P', sig(k.vNom) + ' V · ' + k.mah + ' mAh', [
+        'Energia: <b>' + sig(k.wh) + ' Wh</b>',
+        'Células: <b>' + k.celulas + '</b>',
+        'Corrente máx: <b>' + sig(k.iMax) + ' A</b>'
+      ]) +
+    '</div>' +
+    '<div class="card card-sec">' +
+      '<h3>Como fica ligado</h3>' +
+      '<p class="card-desc">Cada coluna é um grupo em <b>paralelo</b> (as células trabalham juntas como ' +
+      'se fossem uma só, maior). As colunas se ligam em <b>série</b>, uma empurrando a outra, e é isso ' +
+      'que soma a tensão.</p>' +
+      svgPack(s, p, acc) +
+    '</div>' +
+    '<div class="card card-sec">' +
+      '<h3>As três tensões que importam</h3>' +
+      '<div class="rolagem"><table class="tabela">' +
+        '<tr><th>Situação</th><th>Tensão</th><th>O que significa</th></tr>' +
+        '<tr><td>Cheio</td><td class="num">' + sig(k.vCheio) + ' V</td>' +
+          '<td>Fim da carga. Passar disso estraga a célula.</td></tr>' +
+        '<tr><td>Nominal</td><td class="num">' + sig(k.vNom) + ' V</td>' +
+          '<td>É o número que se usa para chamar o pack. Fica aqui a maior parte do tempo.</td></tr>' +
+        '<tr><td>Vazio</td><td class="num">' + sig(k.vVazio) + ' V</td>' +
+          '<td>Hora de parar. Descarregar além disso mata a célula.</td></tr>' +
+      '</table></div>' +
+      '<p class="card-desc">Repare que a tensão <b>não</b> é fixa: esse pack entrega de ' +
+      sig(k.vCheio) + ' V a ' + sig(k.vVazio) + ' V conforme descarrega. Se o seu aparelho precisa de ' +
+      'tensão firme, é aí que entra um conversor.</p>' +
+    '</div>' +
+    '<div class="card card-sec">' +
+      '<h3>A conta</h3>' +
+      conta([
+        '<span class="cmt">// série soma tensão</span>',
+        'V = ' + s + ' × ' + sig(k.quim.nom) + ' V = <b>' + sig(k.vNom) + ' V</b>',
+        '<span class="cmt">// paralelo soma capacidade e corrente</span>',
+        'capacidade = ' + p + ' × ' + cel.mah + ' mAh = <b>' + k.mah + ' mAh</b>',
+        'corrente máx = ' + p + ' × ' + sig(cel.imax) + ' A = <b>' + sig(k.iMax) + ' A</b>',
+        '<span class="cmt">// energia total, que é o que define a autonomia de verdade</span>',
+        'Wh = ' + sig(k.vNom) + ' V × ' + sig(k.ah) + ' Ah = <b>' + sig(k.wh) + ' Wh</b>'
+      ]) +
+    '</div>' +
+    '<div class="card-sec">' + avisoLitio(
+      p > 1 ? 'No seu caso, com ' + p + ' células em paralelo, o casamento é ainda mais importante: ' +
+      'meça a capacidade de cada uma antes e agrupe só as parecidas.' : '') + '</div>' +
+    '<div class="card card-sec">' +
+      '<h3>O que comprar</h3>' +
+      compra('Suporte para ' + k.celulas + ' células 18650 (' + s + 'x' + p + ')',
+             'suporte 18650 ' + k.celulas + ' celulas holder', 'R$ 10–30') +
+      compra('Fita de níquel para solda ponto', 'fita niquel 0.15 x 8mm 18650', 'R$ 20–50 o rolo',
+             'Fita de aço não serve: esquenta e cria resistência.') +
+      compra('BMS ' + s + 'S', 'bms ' + s + 's ' + Math.ceil(k.iMax / 10) * 10 + 'a balanceamento', 'R$ 15–60') +
+      (st.cel === 'reciclada'
+        ? compra('Testador de capacidade de célula', 'testador capacidade 18650 opus liitokala', 'R$ 120–350',
+                 'Célula de notebook usada só presta depois de medida uma a uma. Muitas estão em metade da capacidade.')
+        : compra('Células novas', esc(cel.nome).toLowerCase() + ' original', 'R$ 15–45 cada',
+                 'Desconfie de 18650 anunciada com mais de 3600 mAh — não existe. É célula falsificada.')) +
+    '</div>';
+  },
+
+  mount(raiz) {
+    const self = this;
+    const pega = () => {
+      self.st.cel = $('#pc', raiz).value;
+      self.st.s = Math.max(1, Math.min(20, Math.floor(num($('#ps', raiz).value) || 1)));
+      self.st.p = Math.max(1, Math.min(12, Math.floor(num($('#pp', raiz).value) || 1)));
+      rerender();
+    };
+    ['#pc', '#ps', '#pp'].forEach((s) => {
+      const el = $(s, raiz);
+      if (el) el.addEventListener('change', pega);
+    });
+  }
+};
+
+/* -------- 7.10 BMS e carregador ------------------------------------------ */
+
+const BMS_CORRENTES = [8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100];
+
+/** Escolhe o carregador conforme a quantidade de células em série. */
+function escolherCarregador(s, quim, ah, iCarga) {
+  const vFim = sig(QUIMICAS[quim].cheio * s) + ' V';
+  if (s === 1 && quim === 'liion') {
+    return {
+      nome: 'TP4056 (módulo USB)', tensao: '4,2 V',
+      termo: 'modulo tp4056 com protecao 18650 tipo c', preco: 'R$ 5–12',
+      alerta: 'Compre a versão COM proteção (a que tem dois chips). A sem proteção não desliga em ' +
+              'curto nem em descarga profunda.',
+      prog: true
+    };
+  }
+  if (s === 2) {
+    return { nome: 'TP5100 ou carregador 8,4 V', tensao: vFim,
+      termo: 'modulo tp5100 carregador 2s 8.4v', preco: 'R$ 15–30',
+      alerta: 'O TP5100 vem configurado de fábrica para 1S: é preciso mover um jumper de solda para 2S.' };
+  }
+  return { nome: 'Carregador de bancada ' + vFim, tensao: vFim,
+    termo: 'carregador ' + vFim.replace(',', '.').replace(' ', '') + ' ' + s + 's litio 2a', preco: 'R$ 35–90',
+    alerta: 'De 3S para cima não existe módulo simples que faça tudo: use um carregador fechado na ' +
+            'tensão certa e deixe o balanceamento por conta da BMS.' };
+}
+
+TOOLS.bms = {
+  nome: 'BMS e carregador',
+  desc: 'Qual proteção usar e qual carregador — inclui o resistor do TP4056.',
+  grupo: 'baterias',
+  icone: 'escudo',
+  pronto: true,
+  st: { cel: 'generica', s: 1, p: 2, iDescarga: 3, iCarga: 1 },
+
+  render() {
+    const st = this.st;
+    const cel = celulaPorId(st.cel);
+    const s = Math.max(1, Math.min(20, Math.floor(st.s)));
+    const p = Math.max(1, Math.min(12, Math.floor(st.p)));
+    const k = calcularPack(cel, s, p);
+    const iDesc = st.iDescarga;
+    const iCarga = st.iCarga;
+
+    // BMS com 30% de folga sobre a corrente de trabalho
+    const alvoBms = iDesc * 1.3;
+    let bms = BMS_CORRENTES.filter((x) => x >= alvoBms)[0] || BMS_CORRENTES[BMS_CORRENTES.length - 1];
+    const excedeCelulas = iDesc > k.iMax;
+
+    const carreg = escolherCarregador(s, cel.quim, k.ah, iCarga);
+    const cRate = iCarga / k.ah;
+    const tempo = (k.ah / iCarga) * 1.2;
+    const horas = Math.floor(tempo);
+    const minutos = Math.round((tempo - horas) * 60);
+
+    // TP4056: a corrente de carga é definida por um resistor (R_prog)
+    let blocoProg = '';
+    if (carreg.prog) {
+      const iReal = Math.min(iCarga, 1);
+      const rProg = 1200 / iReal;
+      const prox = e24Proximos(rProg);
+      const rEscolhido = prox.perto;
+      const iFinal = 1200 / rEscolhido;
+      const f = valorParaFaixas(rEscolhido, 5, 4);
+      blocoProg =
+        '<div class="card card-sec">' +
+          '<h3>O resistor que programa a corrente de carga</h3>' +
+          '<p class="card-desc">Aqui está um dos poucos lugares em que a resposta <b>é</b> um resistor. ' +
+          'No TP4056 existe um resistor marcado <b>R3</b> (ou Rprog) que diz ao chip quanta corrente ' +
+          'entregar. De fábrica ele vem de 1,2 kΩ, que dá 1 A. Trocando esse resistor, você muda a ' +
+          'corrente de carga.</p>' +
+          conta([
+            '<span class="cmt">// fórmula do fabricante</span>',
+            'I carga = 1200 ÷ R',
+            'R = 1200 ÷ ' + sig(iReal) + ' A = ' + ohm(rProg),
+            'valor comercial = <b>' + ohm(rEscolhido) + '</b> → carga de <b>' + unidade(iFinal, 'A') + '</b>'
+          ]) +
+          (f.cores ? svgResistor(f.cores, {}) : '') +
+          (iCarga > 1 ? nota('aviso', 'O TP4056 vai só até <b>1 A</b>. Você pediu ' +
+            unidade(iCarga, 'A') + ' — para mais que isso, precisa de outro carregador.') : '') +
+        '</div>';
+    }
+
+    let vereditoC, classeC;
+    if (cRate > 1) { vereditoC = 'Carga rápida demais. Acima de 1C a célula esquenta e envelhece rápido.'; classeC = 'perigo'; }
+    else if (cRate > 0.5) { vereditoC = 'Carga rápida. Funciona, mas encurta a vida da célula.'; classeC = 'aviso'; }
+    else if (cRate < 0.15) { vereditoC = 'Carga lenta e muito segura — só demora.'; classeC = 'dica'; }
+    else { vereditoC = 'Ritmo de carga ideal: rápido o suficiente e sem maltratar a célula.'; classeC = 'dica'; }
+
+    return '' +
+    cabecalho('BMS e carregador', 'A proteção e a carga do pack — a parte que não pode dar errado.') +
+    '<div class="card">' +
+      '<div class="campos">' +
+        '<div class="campo"><label for="bc">Célula</label>' +
+          '<select id="bc">' + CELULAS.map((c) =>
+            '<option value="' + c.id + '"' + (st.cel === c.id ? ' selected' : '') + '>' +
+            esc(c.nome) + '</option>').join('') + '</select></div>' +
+        '<div class="campo"><label for="bs">Série (S)</label>' +
+          '<input type="number" id="bs" min="1" max="20" step="1" value="' + s + '"></div>' +
+        '<div class="campo"><label for="bp">Paralelo (P)</label>' +
+          '<input type="number" id="bp" min="1" max="12" step="1" value="' + p + '"></div>' +
+        '<div class="campo"><label for="bd">Corrente que o aparelho puxa (A)</label>' +
+          '<input type="number" id="bd" step="any" min="0" value="' + iDesc + '"></div>' +
+        '<div class="campo"><label for="bg">Corrente de carga desejada (A)</label>' +
+          '<input type="number" id="bg" step="any" min="0" value="' + iCarga + '">' +
+          '<span class="ajuda">Um bom padrão é metade da capacidade: ' + sig(k.ah / 2) + ' A aqui.</span></div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="card-sec">' +
+      resultadoGrande('Use uma BMS', s + 'S · ' + bms + ' A', [
+        'Pack: <b>' + sig(k.vNom) + ' V ' + k.mah + ' mAh</b>',
+        'Corte por célula: <b>' + sig(k.quim.corte) + ' V</b>',
+        'Fim de carga: <b>' + sig(k.vCheio) + ' V</b>'
+      ]) +
+    '</div>' +
+    (excedeCelulas
+      ? '<div class="card-sec">' + nota('perigo',
+          '<b>As células não aguentam essa corrente.</b> Você pediu ' + sig(iDesc) + ' A, mas ' + p +
+          ' célula(s) ' + esc(cel.nome) + ' entregam com segurança apenas ' + sig(k.iMax) + ' A. ' +
+          'Aumente o paralelo para ' + Math.ceil(iDesc / cel.imax) + 'P, ou use célula de descarga alta. ' +
+          'Uma BMS maior não resolve isso: quem esquenta é a célula.') + '</div>'
+      : '') +
+    '<div class="card card-sec">' +
+      '<h3>Por que a BMS não é opcional</h3>' +
+      '<p class="card-desc">A BMS faz quatro coisas que você não consegue vigiar: corta se alguma célula ' +
+      'passar de ' + sig(k.quim.cheio) + ' V na carga, corta se alguma cair abaixo de ' + sig(k.quim.corte) +
+      ' V na descarga, corta em curto-circuito, e — em pack com mais de uma em série — <b>equilibra</b> as ' +
+      'células, que nunca envelhecem igual. Sem ela, uma célula fraca é levada ao extremo pelas outras ' +
+      'e é assim que pack pega fogo.</p>' +
+      (s > 1
+        ? nota('dica', 'Com ' + s + ' em série, escolha uma BMS <b>com balanceamento</b> ' +
+            '(“balance” ou “com equalização” no anúncio) e ligue os fios de balanceamento na ordem: ' +
+            'B− no negativo do pack, B1 na junção do 1º com o 2º grupo, e assim por diante. Errar essa ' +
+            'ordem queima a BMS na hora.')
+        : nota('dica', 'Com 1S, o módulo TP4056 “com proteção” já traz a BMS embutida — são os dois ' +
+            'chipzinhos pretos ao lado do conector. Não precisa de placa separada.')) +
+    '</div>' +
+    '<div class="card card-sec">' +
+      '<h3>Carregador</h3>' +
+      resultadoGrande('Carregue em', carreg.tensao, [
+        'Corrente: <b>' + sig(iCarga) + ' A</b>',
+        'Ritmo: <b>' + sig(cRate, 2) + 'C</b>',
+        'Tempo: <b>' + horas + ' h ' + minutos + ' min</b>'
+      ]) +
+      '<div class="card-sec">' + nota(classeC, '<b>' + esc(vereditoC) + '</b>') + '</div>' +
+      '<div class="card-sec">' + conta([
+        '<span class="cmt">// tensão final = 4,2 V (ou 3,65 no LiFePO4) por célula em série</span>',
+        'V carga = ' + s + ' × ' + sig(k.quim.cheio) + ' = <b>' + sig(k.vCheio) + ' V</b>',
+        '<span class="cmt">// "C" é a capacidade: 1C carrega em 1 hora, 0,5C em 2 horas</span>',
+        'ritmo = ' + sig(iCarga) + ' A ÷ ' + sig(k.ah) + ' Ah = <b>' + sig(cRate, 2) + 'C</b>',
+        'tempo ≈ (' + sig(k.ah) + ' ÷ ' + sig(iCarga) + ') × 1,2 = <b>' + horas + ' h ' + minutos + ' min</b>'
+      ]) + '</div>' +
+    '</div>' +
+    blocoProg +
+    '<div class="card-sec">' + avisoLitio() + '</div>' +
+    '<div class="card card-sec">' +
+      '<h3>O que comprar</h3>' +
+      compra('BMS ' + s + 'S ' + bms + ' A' + (s > 1 ? ' com balanceamento' : ''),
+             'bms ' + s + 's ' + bms + 'a' + (s > 1 ? ' balanceamento' : ''), 'R$ 15–70') +
+      compra(carreg.nome, carreg.termo, carreg.preco, carreg.alerta) +
+      compra('Multímetro (para conferir cada célula)', 'multimetro digital', 'R$ 40–150',
+             'Não monte pack sem medir. É o instrumento mais importante da bancada.') +
+    '</div>';
+  },
+
+  mount(raiz) {
+    const self = this;
+    const pega = () => {
+      self.st.cel = $('#bc', raiz).value;
+      self.st.s = Math.max(1, Math.floor(num($('#bs', raiz).value) || 1));
+      self.st.p = Math.max(1, Math.floor(num($('#bp', raiz).value) || 1));
+      self.st.iDescarga = num($('#bd', raiz).value) || 0;
+      self.st.iCarga = num($('#bg', raiz).value) || 0.1;
+      rerender();
+    };
+    ['#bc', '#bs', '#bp', '#bd', '#bg'].forEach((s) => {
+      const el = $(s, raiz);
+      if (el) el.addEventListener('change', pega);
+    });
+  }
+};
+
+/* -------- 7.11 Autonomia -------------------------------------------------- */
+
+TOOLS.autonomia = {
+  nome: 'Autonomia',
+  desc: 'Quanto tempo a bateria aguenta com o consumo do seu aparelho.',
+  grupo: 'baterias',
+  icone: 'relogio',
+  pronto: true,
+  st: { mah: 5200, v: 3.7, consumo: 800, modo: 'ma', conversor: false, dod: 80 },
+
+  render() {
+    const st = this.st;
+    const ah = st.mah / 1000;
+    const wh = ah * st.v;
+    const util = st.dod / 100;
+    // Um conversor não é de graça: ele mesmo consome uns 12%.
+    const rend = st.conversor ? 0.88 : 1;
+    const consumoA = st.modo === 'ma' ? st.consumo / 1000 : (st.consumo / st.v);
+    const consumoW = st.modo === 'ma' ? (st.consumo / 1000) * st.v : st.consumo;
+    const horas = consumoA > 0 ? (ah * util * rend) / consumoA : 0;
+    const h = Math.floor(horas);
+    const min = Math.round((horas - h) * 60);
+
+    const cenarios = [
+      { nome: 'Consumo pela metade', f: 0.5 },
+      { nome: 'O consumo que você informou', f: 1 },
+      { nome: 'Consumo dobrado', f: 2 }
+    ];
+
+    return '' +
+    cabecalho('Autonomia', 'Capacidade dividida por consumo — com os descontos que ninguém conta.') +
+    '<div class="card">' +
+      '<div class="campos">' +
+        '<div class="campo"><label for="am">Capacidade do pack (mAh)</label>' +
+          '<input type="number" id="am" step="any" min="0" value="' + st.mah + '"></div>' +
+        '<div class="campo"><label for="av">Tensão do pack (V)</label>' +
+          '<input type="number" id="av" step="any" min="0" value="' + st.v + '"></div>' +
+        '<div class="campo"><label for="ac">Consumo do aparelho</label>' +
+          '<div class="dupla">' +
+            '<input type="number" id="ac" step="any" min="0" value="' + st.consumo + '">' +
+            '<select id="au">' +
+              '<option value="ma"' + (st.modo === 'ma' ? ' selected' : '') + '>mA</option>' +
+              '<option value="w"' + (st.modo === 'w' ? ' selected' : '') + '>W</option>' +
+            '</select>' +
+          '</div></div>' +
+        '<div class="campo"><label for="ad">Quanto da bateria você usa (%)</label>' +
+          '<input type="number" id="ad" step="1" min="10" max="100" value="' + st.dod + '">' +
+          '<span class="ajuda">80% é o normal: a BMS corta antes do fim para proteger.</span></div>' +
+        '<div class="campo"><label for="acv">Tem conversor no meio?</label>' +
+          '<select id="acv">' +
+            '<option value="0"' + (!st.conversor ? ' selected' : '') + '>Não, ligado direto</option>' +
+            '<option value="1"' + (st.conversor ? ' selected' : '') + '>Sim, buck ou boost</option>' +
+          '</select></div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="card card-sec" style="display:flex;gap:22px;align-items:center;flex-wrap:wrap;justify-content:center">' +
+      svgAnel(st.dod, st.dod + '%', 'aproveitável') +
+      '<div style="flex:1;min-width:200px;text-align:center">' +
+        '<div class="rotulo">O aparelho vai durar</div>' +
+        '<div class="numerao">' + (h > 0 ? h + ' h ' : '') + min + ' min</div>' +
+        '<div class="linha-dados">' +
+          '<span class="pastilha">Energia: <b>' + sig(wh) + ' Wh</b></span>' +
+          '<span class="pastilha">Puxando: <b>' + unidade(consumoA, 'A') + '</b></span>' +
+          '<span class="pastilha">Potência: <b>' + unidade(consumoW, 'W') + '</b></span>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="card card-sec">' +
+      '<h3>A conta</h3>' +
+      conta([
+        '<span class="cmt">// nem toda a capacidade é utilizável: a BMS corta antes do fim</span>',
+        'capacidade útil = ' + sig(ah) + ' Ah × ' + st.dod + '% = <b>' + sig(ah * util) + ' Ah</b>',
+        (st.conversor ? '<span class="cmt">// o conversor come uns 12% no caminho</span>\nútil = ' +
+          sig(ah * util) + ' × 0,88 = <b>' + sig(ah * util * rend) + ' Ah</b>' : ''),
+        '<span class="cmt">// tempo = capacidade ÷ consumo</span>',
+        'tempo = ' + sig(ah * util * rend) + ' Ah ÷ ' + sig(consumoA) + ' A = <b>' + sig(horas) + ' h</b>'
+      ].filter(Boolean)) +
+    '</div>' +
+    '<div class="card card-sec">' +
+      '<h3>E se o consumo for outro</h3>' +
+      '<div class="rolagem"><table class="tabela">' +
+        '<tr><th>Cenário</th><th>Consumo</th><th>Duração</th></tr>' +
+        cenarios.map((c) => {
+          const t = consumoA > 0 ? (ah * util * rend) / (consumoA * c.f) : 0;
+          return '<tr><td>' + esc(c.nome) + '</td><td class="num">' + unidade(consumoA * c.f, 'A') +
+            '</td><td class="num">' + Math.floor(t) + ' h ' + Math.round((t - Math.floor(t)) * 60) + ' min</td></tr>';
+        }).join('') +
+      '</table></div>' +
+    '</div>' +
+    nota('aviso', '<b>Na prática dá menos.</b> Esta conta é o teto teórico. Bateria velha entrega menos, ' +
+      'frio derruba a capacidade, e quase todo aparelho puxa picos de corrente bem acima da média — e é ' +
+      'a média que você informou aqui. Conte com 10 a 25% a menos do que esse número.');
+  },
+
+  mount(raiz) {
+    const self = this;
+    const pega = () => {
+      self.st.mah = num($('#am', raiz).value) || 0;
+      self.st.v = num($('#av', raiz).value) || 3.7;
+      self.st.consumo = num($('#ac', raiz).value) || 0;
+      self.st.modo = $('#au', raiz).value;
+      self.st.dod = Math.max(10, Math.min(100, num($('#ad', raiz).value) || 80));
+      self.st.conversor = $('#acv', raiz).value === '1';
+      rerender();
+    };
+    ['#am', '#av', '#ac', '#au', '#ad', '#acv'].forEach((s) => {
+      const el = $(s, raiz);
+      if (el) el.addEventListener('change', pega);
+    });
+  }
+};
+
+/* -------- 7.12 Assistente de recuperação --------------------------------- */
+
+TOOLS.recuperar = {
+  nome: 'Recuperar aparelho',
+  desc: 'Passo a passo para dar vida nova a um aparelho antigo de bateria.',
+  grupo: 'baterias',
+  icone: 'ferramenta',
+  pronto: true,
+  st: { aparelho: 'Aspirador de mão', vAntiga: 7.2, corrente: 4, horas: 0.5, cel: 'samsung30q' },
+
+  /** Traduz o aparelho antigo num projeto de pack novo. */
+  projetar() {
+    const st = this.st;
+    const cel = celulaPorId(st.cel);
+    const q = QUIMICAS[cel.quim];
+    // Quantas células em série chegam mais perto da tensão original.
+    const sIdeal = st.vAntiga / q.nom;
+    const s = Math.max(1, Math.round(sIdeal));
+    const k1 = calcularPack(cel, s, 1);
+    const erro = ((k1.vNom - st.vAntiga) / st.vAntiga) * 100;
+    // Paralelo: o maior entre o que a corrente exige e o que a autonomia exige.
+    const pPorCorrente = Math.ceil(st.corrente / cel.imax);
+    const ahNecessario = st.corrente * st.horas / 0.8; // 80% aproveitável
+    const pPorAutonomia = Math.ceil(ahNecessario / (cel.mah / 1000));
+    const p = Math.max(1, pPorCorrente, pPorAutonomia);
+    const k = calcularPack(cel, s, p);
+    const bms = BMS_CORRENTES.filter((x) => x >= st.corrente * 1.3)[0] || 100;
+    const carreg = escolherCarregador(s, cel.quim, k.ah, k.ah / 2);
+    return { s: s, p: p, k: k, cel: cel, erro: erro, bms: bms, carreg: carreg,
+             pPorCorrente: pPorCorrente, pPorAutonomia: pPorAutonomia, ahNecessario: ahNecessario };
+  },
+
+  /** Monta o prompt para o usuário colar no assistente de IA dele. */
+  gerarPrompt(r) {
+    const st = this.st;
+    return 'Quero recuperar um aparelho antigo movido a bateria e preciso da sua revisão técnica.\n\n' +
+      'APARELHO: ' + st.aparelho + '\n' +
+      'Bateria original: ' + sig(st.vAntiga) + ' V\n' +
+      'Corrente que o aparelho puxa: ' + sig(st.corrente) + ' A\n' +
+      'Autonomia desejada: ' + sig(st.horas) + ' h\n\n' +
+      'PLANO QUE EU MONTEI (feito pelo app E-TronIQ):\n' +
+      '- Célula: ' + r.cel.nome + ' (' + r.cel.mah + ' mAh, ' + sig(r.cel.imax) + ' A contínuos)\n' +
+      '- Arranjo: ' + r.s + 'S' + r.p + 'P = ' + r.k.celulas + ' células\n' +
+      '- Tensão: ' + sig(r.k.vNom) + ' V nominal (' + sig(r.k.vCheio) + ' V cheio, ' + sig(r.k.vVazio) + ' V vazio)\n' +
+      '- Capacidade: ' + r.k.mah + ' mAh (' + sig(r.k.wh) + ' Wh)\n' +
+      '- Corrente máxima do pack: ' + sig(r.k.iMax) + ' A\n' +
+      '- BMS: ' + r.s + 'S ' + r.bms + ' A' + (r.s > 1 ? ' com balanceamento' : '') + '\n' +
+      '- Carregador: ' + r.carreg.nome + ' (' + r.carreg.tensao + ')\n\n' +
+      'O QUE EU PRECISO DE VOCÊ:\n' +
+      '1. Confira se a tensão nova (' + sig(r.k.vNom) + ' V, chegando a ' + sig(r.k.vCheio) + ' V na carga) ' +
+      'é segura para um aparelho projetado para ' + sig(st.vAntiga) + ' V. O motor vai girar mais rápido? ' +
+      'A eletrônica interna aguenta?\n' +
+      '2. Aponte erros no arranjo, no dimensionamento da BMS e na escolha do carregador.\n' +
+      '3. Descreva a ordem de montagem e a sequência de energização, incluindo como testar cada ' +
+      'proteção da BMS antes de fechar o aparelho.\n' +
+      '4. Liste os riscos específicos desse projeto.\n\n' +
+      'Sou iniciante em eletrônica. Explique em português simples, mostre as contas, e seja direto ' +
+      'sobre qualquer coisa que possa pegar fogo ou me machucar.';
+  },
+
+  render() {
+    const st = this.st;
+    const r = this.projetar();
+    const acc = CORES_GRUPO.baterias.c;
+    const sobretensao = r.erro > 8;
+
+    return '' +
+    cabecalho('Recuperar aparelho', 'Aquele aparelho velho com bateria morta vira um projeto aqui.') +
+    '<div class="card">' +
+      '<div class="campos">' +
+        '<div class="campo"><label for="rap">Que aparelho é</label>' +
+          '<input type="text" id="rap" value="' + esc(st.aparelho) + '"></div>' +
+        '<div class="campo"><label for="rv">Tensão da bateria original (V)</label>' +
+          '<input type="number" id="rv" step="any" min="0" value="' + st.vAntiga + '">' +
+          '<span class="ajuda">Está na etiqueta da bateria velha ou do carregador.</span></div>' +
+        '<div class="campo"><label for="ri">Corrente que ele puxa (A)</label>' +
+          '<input type="number" id="ri" step="any" min="0" value="' + st.corrente + '">' +
+          '<span class="ajuda">Se só souber a potência: watts ÷ volts.</span></div>' +
+        '<div class="campo"><label for="rh">Autonomia desejada (horas)</label>' +
+          '<input type="number" id="rh" step="any" min="0.1" value="' + st.horas + '"></div>' +
+        '<div class="campo"><label for="rc">Célula que pretende usar</label>' +
+          '<select id="rc">' + CELULAS.map((c) =>
+            '<option value="' + c.id + '"' + (st.cel === c.id ? ' selected' : '') + '>' +
+            esc(c.nome) + '</option>').join('') + '</select></div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="card-sec">' +
+      resultadoGrande('Monte um pack', r.s + 'S' + r.p + 'P', [
+        '<b>' + r.k.celulas + '</b> células',
+        '<b>' + sig(r.k.vNom) + ' V</b> · <b>' + r.k.mah + ' mAh</b>',
+        'Entrega até <b>' + sig(r.k.iMax) + ' A</b>'
+      ]) +
+    '</div>' +
+    (sobretensao
+      ? '<div class="card-sec">' + nota('aviso',
+          '<b>Atenção à tensão.</b> O pack novo fica em ' + sig(r.k.vNom) + ' V nominais e chega a ' +
+          sig(r.k.vCheio) + ' V recém-carregado, contra ' + sig(st.vAntiga) + ' V do original — ' +
+          sig(r.erro, 2) + '% a mais. Em aparelho só com motor, isso costuma significar apenas mais força ' +
+          'e mais rotação. Em aparelho com placa eletrônica, pode queimar. Se houver placa, o certo é ' +
+          'usar ' + (r.s - 1) + 'S e aceitar um pouco menos de força, ou pôr um conversor.') + '</div>'
+      : '') +
+    '<div class="card card-sec">' +
+      '<h3>Como cheguei nesse arranjo</h3>' +
+      conta([
+        '<span class="cmt">// 1. a série sai da tensão original</span>',
+        's = ' + sig(st.vAntiga) + ' V ÷ ' + sig(r.k.quim.nom) + ' V por célula = ' + sig(st.vAntiga / r.k.quim.nom, 2) +
+          ' → arredondando: <b>' + r.s + 'S</b> (' + sig(r.k.vNom) + ' V)',
+        '<span class="cmt">// 2. o paralelo precisa aguentar a corrente...</span>',
+        'p mínimo = ' + sig(st.corrente) + ' A ÷ ' + sig(r.cel.imax) + ' A por célula = <b>' + r.pPorCorrente + 'P</b>',
+        '<span class="cmt">// ...e também dar a autonomia pedida</span>',
+        'capacidade = (' + sig(st.corrente) + ' A × ' + sig(st.horas) + ' h) ÷ 0,8 = ' + sig(r.ahNecessario) + ' Ah',
+        'p mínimo = ' + sig(r.ahNecessario) + ' Ah ÷ ' + sig(r.cel.mah / 1000) + ' Ah = <b>' + r.pPorAutonomia + 'P</b>',
+        '<span class="cmt">// vale o maior dos dois</span>',
+        'arranjo final = <b>' + r.s + 'S' + r.p + 'P</b>'
+      ]) +
+    '</div>' +
+    '<div class="card card-sec">' +
+      '<h3>O pack montado</h3>' + svgPack(r.s, r.p, acc) +
+    '</div>' +
+    '<div class="card card-sec">' +
+      '<h3>Ordem de montagem</h3>' +
+      '<ol style="color:var(--txt-2);font-size:14px;line-height:1.7;padding-left:18px;margin:8px 0 0">' +
+        '<li><b>Meça cada célula</b> antes de tudo. Descarte as que estiverem abaixo de 2,5 V ou que não ' +
+          'segurem carga — célula ruim contamina o grupo inteiro.</li>' +
+        '<li><b>Monte os grupos em paralelo primeiro</b>, juntando só células de capacidade parecida. ' +
+          'Iguale a tensão delas antes de unir, senão uma despeja corrente na outra.</li>' +
+        '<li><b>Ligue os ' + r.s + ' grupos em série</b>: positivo de um no negativo do seguinte.</li>' +
+        '<li><b>Instale a BMS</b> — o fio preto (B−) no negativo do pack, depois os fios de balanceamento ' +
+          'na ordem, do primeiro ao último. Errar a ordem queima a placa.</li>' +
+        '<li><b>Confira com o multímetro</b>: ' + sig(r.k.vNom) + ' V (mais ou menos) na saída P+ / P−, e ' +
+          'cada grupo com a mesma tensão dos outros.</li>' +
+        '<li><b>Teste a proteção antes de fechar:</b> dê um curto rapidíssimo na saída — a BMS deve ' +
+          'desligar e voltar sozinha ao ligar o carregador.</li>' +
+        '<li><b>Isole tudo</b> com anel de isolamento no positivo de cada célula, fita Kapton e termo-retrátil. ' +
+          'Só então feche o aparelho.</li>' +
+        '<li><b>Primeira carga supervisionada</b>, em cima de superfície que não pega fogo, com você por perto.</li>' +
+      '</ol>' +
+    '</div>' +
+    '<div class="card card-sec">' +
+      '<h3>Quer a revisão de um engenheiro?</h3>' +
+      '<p class="card-desc">O E-TronIQ não conversa com IA nenhuma (por isso é de graça e funciona ' +
+      'offline). Mas ele monta o pedido pronto: copie o texto abaixo e cole no seu assistente. ' +
+      'Ele volta com a revisão do projeto, os riscos e a ordem de energização.</p>' +
+      '<textarea id="prompt" readonly rows="8">' + esc(this.gerarPrompt(r)) + '</textarea>' +
+      '<div class="btn-linha"><button class="btn primario" id="copiarPrompt">Copiar pedido</button></div>' +
+    '</div>' +
+    '<div class="card-sec">' + avisoLitio() + '</div>' +
+    '<div class="card card-sec">' +
+      '<h3>Lista de compras deste projeto</h3>' +
+      compra(r.k.celulas + '× ' + r.cel.nome, esc(r.cel.nome).toLowerCase() + ' original',
+             'R$ ' + (15 * r.k.celulas) + '–' + (45 * r.k.celulas) + ' no total',
+             'Desconfie de 18650 com mais de 3600 mAh anunciados. Não existe.') +
+      compra('BMS ' + r.s + 'S ' + r.bms + ' A' + (r.s > 1 ? ' com balanceamento' : ''),
+             'bms ' + r.s + 's ' + r.bms + 'a' + (r.s > 1 ? ' balanceamento' : ''), 'R$ 15–70') +
+      compra(r.carreg.nome, r.carreg.termo, r.carreg.preco, r.carreg.alerta) +
+      compra('Suporte para ' + r.k.celulas + ' células', 'suporte 18650 ' + r.k.celulas + ' celulas', 'R$ 10–30') +
+      compra('Fita de níquel + anéis isolantes', 'fita niquel 18650 anel isolante kit', 'R$ 25–60') +
+      compra('Termo-retrátil e fita Kapton', 'termo retratil bateria kapton fita', 'R$ 15–40') +
+    '</div>';
+  },
+
+  mount(raiz) {
+    const self = this;
+    const pega = () => {
+      self.st.aparelho = $('#rap', raiz).value || 'Aparelho';
+      self.st.vAntiga = num($('#rv', raiz).value) || 3.7;
+      self.st.corrente = num($('#ri', raiz).value) || 0.1;
+      self.st.horas = num($('#rh', raiz).value) || 0.5;
+      self.st.cel = $('#rc', raiz).value;
+      rerender();
+    };
+    ['#rap', '#rv', '#ri', '#rh', '#rc'].forEach((s) => {
+      const el = $(s, raiz);
+      if (el) el.addEventListener('change', pega);
+    });
+    const bp = $('#copiarPrompt', raiz);
+    if (bp) bp.addEventListener('click', () => copiar($('#prompt', raiz).value));
+  }
+};
+
+/* -------- 7.13 Ferramentas que ainda vão chegar -------------------------- */
 
 const EM_BREVE = [
-  { id: 'pack', nome: 'Montador de pack 18650', grupo: 'baterias', icone: 'pack', entrega: 3,
-    desc: 'Série e paralelo: quantos volts, quantos mAh, quanta corrente.' },
-  { id: 'bms', nome: 'BMS e carregador', grupo: 'baterias', icone: 'escudo', entrega: 3,
-    desc: 'Qual BMS usar e qual carregador — inclui o resistor do TP4056.' },
-  { id: 'autonomia', nome: 'Autonomia', grupo: 'baterias', icone: 'relogio', entrega: 3,
-    desc: 'Quanto tempo a bateria aguenta com o consumo do seu aparelho.' },
-  { id: 'recuperar', nome: 'Recuperar aparelho', grupo: 'baterias', icone: 'ferramenta', entrega: 3,
-    desc: 'Passo a passo para dar vida nova a um aparelho antigo de bateria.' },
   { id: 'protoboard', nome: 'Protoboard Arduino', grupo: 'arduino', icone: 'chip', entrega: 4,
     desc: 'Circuitos montados e desenhados, com o código pronto para copiar.' },
   { id: 'consulta', nome: 'Consulta rápida', grupo: 'arduino', icone: 'livro', entrega: 4,
@@ -1614,7 +2342,8 @@ function cabecalho(titulo, sub) {
 }
 
 function cardFerramenta(id, t) {
-  return '<a class="card' + (t.pronto ? '' : ' embreve') + '" href="#/t/' + id + '">' +
+  return '<a class="card' + (t.pronto ? '' : ' embreve') + '" href="#/t/' + id + '" ' +
+    'style="' + corGrupo(t.grupo) + '">' +
     (t.pronto ? '' : '<span class="selo">Em breve</span>') +
     '<div class="card-icone">' + icone(t.icone) + '</div>' +
     '<h3>' + esc(t.nome) + '</h3>' +
@@ -1638,7 +2367,8 @@ function telaInicio() {
   GRUPOS.filter((g) => g.id !== 'inicio').forEach((g) => {
     const lista = toolsDoGrupo(g.id);
     if (!lista.length) return;
-    secoes += '<div class="secao-titulo">' + esc(g.nome) + '</div>' +
+    secoes += '<div class="secao-titulo" style="' + corGrupo(g.id) + '">' +
+      '<span class="secao-pad"></span>' + esc(g.nome) + '</div>' +
       '<div class="grade">' + lista.map((x) => cardFerramenta(x.id, x.t)).join('') + '</div>';
   });
 

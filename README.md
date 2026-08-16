@@ -24,10 +24,10 @@ para backup e para levar os dados de um aparelho a outro.
 | Energia | Lei de Ohm e potência | ✅ |
 | Energia | Quero X volts (diodo / LDO / buck) | ✅ |
 | Energia | Potência e calor | ✅ |
-| Baterias | Montador de pack 18650 (série/paralelo) | entrega 3 |
-| Baterias | BMS e carregador (TP4056, R_prog) | entrega 3 |
-| Baterias | Autonomia | entrega 3 |
-| Baterias | Recuperar aparelho antigo | entrega 3 |
+| Baterias | Montador de pack 18650 (série/paralelo) | ✅ |
+| Baterias | BMS e carregador (TP4056, R_prog) | ✅ |
+| Baterias | Autonomia | ✅ |
+| Baterias | Recuperar aparelho antigo | ✅ |
 | Arduino | Protoboard com ponte de IA | entrega 4 |
 | Arduino | Consulta rápida (pinagem, capacitores, SMD, AWG) | entrega 4 |
 | Dados | Meus projetos | entrega 4 |
