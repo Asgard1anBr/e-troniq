@@ -109,7 +109,7 @@ em `#app`. Sem roteador externo.
 
 ## Versão atual
 
-- Versão: 1.3.0
-- Cache SW: `etroniq-v4`
+- Versão: 1.4.0
+- Cache SW: `etroniq-v5`
 - O histórico de versões vive no array `CHANGELOG` (app.js) e é renderizado em Ajustes.
   A versão também aparece embaixo do menu lateral (`.rail-versao`), linkando para Ajustes.

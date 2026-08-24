@@ -593,6 +593,49 @@ textarea { min-height: 110px; resize: vertical; font-family: var(--mono); font-s
   margin: 10px auto 4px;
 }
 
+/* ---------- checklist de testes ------------------------------------------ */
+
+.teste-bms {
+  border: 1px solid var(--linha);
+  border-left: 3px solid var(--linha-forte);
+  border-radius: var(--r-sm);
+  padding: 14px 16px;
+  margin-top: 14px;
+}
+
+.teste-bms.feito-ok { border-left-color: var(--verde); }
+.teste-bms.feito-falhou { border-left-color: var(--vermelho); background: rgba(244, 82, 107, .05); }
+
+.teste-cabeca {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.teste-selo {
+  font-size: 10.5px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: 2px 9px;
+  border-radius: 99px;
+}
+
+.teste-selo.ok {
+  background: rgba(47, 208, 122, .14);
+  color: var(--verde);
+  border: 1px solid rgba(47, 208, 122, .32);
+}
+
+.teste-selo.falhou {
+  background: rgba(244, 82, 107, .14);
+  color: var(--vermelho);
+  border: 1px solid rgba(244, 82, 107, .32);
+}
+
+.teste-bms .card-desc { margin-top: 5px; }
+
 /* ---------- código e prosa ----------------------------------------------- */
 
 pre.codigo {

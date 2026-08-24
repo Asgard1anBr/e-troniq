@@ -38,7 +38,7 @@ Uma pessoa que **não é da área** e quer:
 
 ---
 
-## 2. As 14 ferramentas que já existem
+## 2. As 17 ferramentas que já existem
 
 Antes de sugerir algo novo, confira se não está aqui. Cada ferramenta tem tela própria,
 endereçada por `#/t/<id>`.
@@ -58,13 +58,16 @@ endereçada por `#/t/<id>`.
 |---|---|---|
 | `ohm` | Lei de Ohm e potência | Preenche dois campos quaisquer entre V, I, R e P; resolve os outros dois. |
 | `quantosVolts` | Quero X volts | Entrada, saída, corrente e se a fonte é bateria. Decide entre **diodo, regulador linear, buck, boost ou buck-boost**, mostra a conta do calor e do rendimento, e explica por que descartou as outras. Calcula os resistores do LM317 quando cai nele. |
-| `dissipacao` | Potência e calor | V × I mais resistência térmica por tipo de montagem: temperatura estimada, veredito em português e qual dissipador resolveria. |
+| `dissipacao` | Potência e calor | Duas abas. **Vai esquentar?** — V × I mais resistência térmica da montagem: temperatura estimada e qual dissipador resolveria. **Medi, está normal?** — a conta ao contrário, para quem usou termômetro infravermelho: veredito por faixa, com faixas mais apertadas para célula de lítio, e as duas armadilhas do termômetro IR. |
+| `chaveDC` | Essa chave aguenta DC? | O rating impresso na chave é em AC. Distingue os dois regimes: abaixo de 15 V o arco não se sustenta e o limite é térmico; acima, o arco se sustenta porque em DC não há passagem por zero, e a capacidade despenca. Devolve SERVE / MARGINAL / NÃO SERVE, exigindo o dobro da corrente contínua. |
+| `motorDC` | Meu motor não gira | Wizard por sintoma (parado, tranco, fraco, esquenta). Entrega o teste da pilha AA, a resistência girando o eixo, a medição no terminal do motor e a armadilha da fonte ATX. Mais a limpeza de motor com vazamento alcalino. |
 
 ### Baterias (cor verde)
 
 | id | Nome | O que faz |
 |---|---|---|
 | `pack` | Montador de pack 18650 | nSmP desenhado célula por célula. Devolve V nominal/cheio/vazio, mAh, Wh e a corrente máxima real das células. Li-ion e LiFePO4. |
+| `bmsTeste` | Testar a BMS | Checklist executável dos quatro testes de proteção — sobredescarga, recuperação, sobrecorrente e curto — com critérios calculados pela química e pelo S. Marca passou/falhou, guarda no aparelho e salva o laudo em Meus projetos. Sugere PTC como segunda barreira. |
 | `bms` | BMS e carregador | Dimensiona a BMS com 30% de folga, escolhe o carregador pela quantidade de células em série e calcula o **R_prog do TP4056** (`I = 1200 ÷ R`), com as cores do resistor desenhadas. Avisa quando a corrente pedida excede o que as células entregam. |
 | `autonomia` | Autonomia | Desconta profundidade de descarga e rendimento do conversor. Anel de progresso e tabela de cenários. |
 | `recuperar` | Recuperar aparelho | O wizard. Da tensão da bateria velha e da corrente do aparelho até o arranjo, a BMS, o carregador, a ordem de montagem em 8 passos e a lista de compras. **Gera um prompt pronto** para o usuário levar o projeto a um assistente de IA. |
@@ -268,6 +271,14 @@ solar pequeno, medir consumo real de um aparelho.
 - Conteúdo que precise de dado que o app não tem como saber: preço em tempo real,
   estoque de loja, datasheet de peça obscura.
 
+### Sobre regra prática e datasheet
+
+Parte do conteúdo do app é **regra prática de engenharia**, não valor de folha de dados:
+os limiares de arco em corrente contínua (15 e 30 V), as resistências térmicas por tipo
+de montagem, as faixas de temperatura aceitável e a folga de 2× para chaves. Onde isso
+acontece, a tela **diz que é estimativa** e manda conferir a especificação do fabricante.
+Mantenha essa honestidade em qualquer módulo novo.
+
 ### Sobre datasheets
 
 Nunca invente valor de datasheet — corrente máxima, pinagem, registrador, número de
@@ -279,8 +290,11 @@ apareceu neste projeto.
 
 ## 7. Estado atual
 
-- **Versão 1.3.0**, cache `etroniq-v4`.
-- As 14 ferramentas da versão 1 estão prontas e publicadas.
+- **Versão 1.4.0**, cache `etroniq-v5`.
+- 17 ferramentas prontas e publicadas.
+- A v1.4.0 nasceu de um projeto real de bancada: restauração de uma micro retífica com
+  conversão de Ni-Cd para lítio. Cada um dos três módulos novos resolve uma dúvida que
+  apareceu de verdade ali.
 - Em aberto para as próximas versões: "Meu estoque" — cadastrar o que ele tem na
   gaveta, para as recomendações priorizarem o que já existe — e ampliar a biblioteca
   de circuitos do Arduino.

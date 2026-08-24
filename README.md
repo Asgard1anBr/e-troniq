@@ -23,9 +23,12 @@ para backup e para levar os dados de um aparelho a outro.
 | Resistores | Divisor de tensão | ✅ |
 | Energia | Lei de Ohm e potência | ✅ |
 | Energia | Quero X volts (diodo / LDO / buck) | ✅ |
-| Energia | Potência e calor | ✅ |
+| Energia | Potência e calor (calcular ou avaliar temperatura medida) | ✅ |
+| Energia | Essa chave aguenta DC? | ✅ |
+| Energia | Meu motor não gira (diagnóstico) | ✅ |
 | Baterias | Montador de pack 18650 (série/paralelo) | ✅ |
 | Baterias | BMS e carregador (TP4056, R_prog) | ✅ |
+| Baterias | Testar a BMS (quatro proteções) | ✅ |
 | Baterias | Autonomia | ✅ |
 | Baterias | Recuperar aparelho antigo | ✅ |
 | Arduino | Protoboard com ponte de IA | ✅ |

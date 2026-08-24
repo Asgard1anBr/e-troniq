@@ -5,9 +5,19 @@
 
 'use strict';
 
-const VERSAO = '1.3.0';
+const VERSAO = '1.4.0';
 
 const CHANGELOG = [
+  {
+    versao: '1.4.0',
+    data: '2026-08-24',
+    itens: [
+      'Nova ferramenta “Essa chave aguenta DC?”: o rating impresso é em AC e em corrente contínua a conversa é outra.',
+      'Nova ferramenta “Meu motor não gira”: diagnóstico por sintoma, começando pelo teste da pilha AA.',
+      'Nova ferramenta “Testar a BMS”: os quatro testes de proteção antes de montar o pack.',
+      'Potência e calor ganhou a aba “Medi, está normal?”, para quem usa termômetro infravermelho.'
+    ]
+  },
   {
     versao: '1.3.0',
     data: '2026-08-16',
@@ -207,6 +217,10 @@ const ICONES = {
   pasta: '<path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2.5h9A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18Z"/>',
   alerta: '<path d="M12 3.5 2.8 19.5h18.4L12 3.5Z"/><path d="M12 10v4.5"/><circle cx="12" cy="17.4" r=".9" fill="currentColor" stroke="none"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><circle cx="12" cy="8" r=".9" fill="currentColor" stroke="none"/>',
+  chave: '<rect x="2.5" y="7" width="19" height="10" rx="5"/><circle cx="16.5" cy="12" r="3"/><path d="M6 10.5v3"/>',
+  motor: '<circle cx="12" cy="12" r="7.8"/><path d="M12 4.2V2M12 22v-2.2M4.2 12H2M22 12h-2.2"/><path d="M9.4 14.8V9.2l2.6 4 2.6-4v5.6"/>',
+  checklist: '<rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="m8 9.5 1.8 1.8L13.5 7.6"/><path d="M8 15.5h8"/>',
+  termometro: '<path d="M14 14.8V5.5a2 2 0 1 0-4 0v9.3a4 4 0 1 0 4 0Z"/><path d="M12 9.5v5.8"/>',
   download: '<path d="M12 3v12"/><path d="m7.5 11 4.5 4.5L16.5 11"/><path d="M4 20h16"/>',
   upload: '<path d="M12 20V8"/><path d="m7.5 12 4.5-4.5L16.5 12"/><path d="M4 4h16"/>'
 };
@@ -1849,15 +1863,143 @@ TOOLS.quantosVolts = {
 
 /* -------- 7.8 Potência e calor ------------------------------------------- */
 
+/* Faixas de temperatura aceitável, em °C, por tipo de peça.
+   São REGRAS PRÁTICAS de bancada, não valores de datasheet: [tranquilo, aceitável, limite].
+   Acima do terceiro número, resolver antes de usar. */
+const FAIXAS_TERMICAS = [
+  { id: 'eletronico', nome: 'Componente eletrônico (regulador, transistor, driver)', f: [50, 70, 85] },
+  { id: 'litioCarga', nome: 'Célula de lítio — carregando', f: [35, 45, 50], litio: true },
+  { id: 'litioDescarga', nome: 'Célula de lítio — descarregando', f: [40, 50, 60], litio: true },
+  { id: 'resistor', nome: 'Resistor de potência (fio ou cerâmico)', f: [70, 100, 130], quente: true }
+];
+
 TOOLS.dissipacao = {
   nome: 'Potência e calor',
-  desc: 'Quanto o componente esquenta e se ele precisa de dissipador.',
+  desc: 'Quanto o componente esquenta, ou se a temperatura que você mediu está normal.',
   grupo: 'energia',
-  icone: 'regua',
+  icone: 'termometro',
   pronto: true,
-  st: { v: 6.7, i: 300, montagem: 'sem', ambiente: 30 },
+  st: { aba: 'calcular', v: 6.7, i: 300, montagem: 'sem', ambiente: 30,
+        medida: 62, peca: 'eletronico' },
+
+  /* ---- modo 2: medi uma temperatura, está normal? ---- */
+  renderMedida() {
+    const st = this.st;
+    const peca = FAIXAS_TERMICAS.filter((x) => x.id === st.peca)[0] || FAIXAS_TERMICAS[0];
+    const t = st.medida;
+    const subida = t - st.ambiente;
+    const m = MONTAGENS.filter((x) => x.id === st.montagem)[0] || MONTAGENS[0];
+    const potEstimada = subida > 0 ? subida / m.rth : 0;
+
+    let veredito, classe;
+    if (t <= peca.f[0]) {
+      veredito = 'Tranquilo. Está dentro do normal para essa peça.'; classe = 'dica';
+    } else if (t <= peca.f[1]) {
+      veredito = 'Aceitável. Funciona assim, mas fique de olho em uso prolongado.'; classe = '';
+    } else if (t <= peca.f[2]) {
+      veredito = 'No limite. Revise a montagem antes de fechar a caixa.'; classe = 'aviso';
+    } else {
+      veredito = 'Resolva antes de usar. Nessa temperatura a peça se degrada rápido.'; classe = 'perigo';
+    }
+
+    const alerta = peca.litio && t > peca.f[1]
+      ? nota('perigo', '<b>Célula de lítio quente é sinal de alerta, não de esforço.</b> ' +
+          'Pare a carga ou a descarga, deixe esfriar e procure a causa: corrente alta demais, ' +
+          'célula desgastada, contato ruim ou curto parcial. Célula que esquenta sem motivo, incha ' +
+          'ou cheira estranho vai para o descarte — não se recupera.')
+      : '';
+
+    return '' +
+    '<div class="card">' +
+      '<div class="campos">' +
+        '<div class="campo"><label for="tm">Temperatura que você mediu (°C)</label>' +
+          '<input type="number" id="tm" step="any" value="' + st.medida + '"></div>' +
+        '<div class="campo"><label for="ta">Temperatura ambiente (°C)</label>' +
+          '<input type="number" id="ta" step="any" value="' + st.ambiente + '"></div>' +
+        '<div class="campo"><label for="tp">O que você mediu</label>' +
+          '<select id="tp">' + FAIXAS_TERMICAS.map((x) =>
+            '<option value="' + x.id + '"' + (st.peca === x.id ? ' selected' : '') + '>' +
+            esc(x.nome) + '</option>').join('') + '</select></div>' +
+        '<div class="campo"><label for="tmo">Como está montado</label>' +
+          '<select id="tmo">' + MONTAGENS.map((x) =>
+            '<option value="' + x.id + '"' + (st.montagem === x.id ? ' selected' : '') + '>' +
+            esc(x.nome) + '</option>').join('') + '</select>' +
+          '<span class="ajuda">Serve para estimar quantos watts a peça está dissipando.</span></div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="card-sec">' +
+      resultadoGrande('Você mediu', sig(t, 3) + ' °C', [
+        'Acima do ambiente: <b>+' + sig(subida, 3) + ' °C</b>',
+        'Dissipando algo perto de: <b>' + unidade(potEstimada, 'W') + '</b>',
+        'Aceitável até: <b>' + peca.f[1] + ' °C</b>'
+      ]) +
+    '</div>' +
+    '<div class="card-sec">' + nota(classe, '<b>' + esc(veredito) + '</b>') + '</div>' +
+    (alerta ? '<div class="card-sec">' + alerta + '</div>' : '') +
+    '<div class="card card-sec">' +
+      '<h3>As faixas para ' + esc(peca.nome.toLowerCase()) + '</h3>' +
+      '<div class="rolagem"><table class="tabela">' +
+        '<tr><th>Faixa</th><th>O que fazer</th></tr>' +
+        '<tr><td class="num">até ' + peca.f[0] + ' °C</td><td>Tranquilo.</td></tr>' +
+        '<tr><td class="num">' + peca.f[0] + ' a ' + peca.f[1] + ' °C</td>' +
+          '<td>Aceitável — monitorar em uso prolongado.</td></tr>' +
+        '<tr><td class="num">' + peca.f[1] + ' a ' + peca.f[2] + ' °C</td>' +
+          '<td>Limite — revisar a montagem antes de fechar a caixa.</td></tr>' +
+        '<tr><td class="num">acima de ' + peca.f[2] + ' °C</td><td>Resolver antes de usar.</td></tr>' +
+      '</table></div>' +
+      (peca.quente
+        ? '<p class="card-desc">Resistor de fio e cerâmico é <b>feito</b> para trabalhar quente — ' +
+          'alguns chegam a 150 °C em regime. O que não pode é queimar o que está em volta: fio, ' +
+          'plástico e placa. Se o datasheet do seu resistor disser outra coisa, o datasheet manda.</p>'
+        : '<p class="card-desc">Estas faixas são regra prática de bancada, boas para decidir ' +
+          '“aceita ou não aceita”. O limite real de cada peça está no datasheet dela.</p>') +
+    '</div>' +
+    '<div class="card card-sec">' +
+      '<h3>A conta ao contrário</h3>' +
+      conta([
+        '<span class="cmt">// o quanto a peça subiu acima do ambiente</span>',
+        'subida = ' + sig(t, 3) + ' − ' + sig(st.ambiente, 3) + ' = <b>' + sig(subida, 3) + ' °C</b>',
+        '<span class="cmt">// dividindo pela resistência térmica da montagem, dá a potência</span>',
+        'P ≈ ' + sig(subida, 3) + ' °C ÷ ' + m.rth + ' °C/W = <b>' + unidade(potEstimada, 'W') + '</b>'
+      ]) +
+      '<p class="card-desc">É o mesmo cálculo da outra aba, de trás para frente. Serve para descobrir ' +
+      'quanta potência está sendo desperdiçada sem precisar medir corrente.</p>' +
+    '</div>' +
+    '<div class="card card-sec">' +
+      '<h3>Medindo direito com termômetro infravermelho</h3>' +
+      nota('dica', '<b>Superfície brilhante mente.</b> Metal polido — corpo de diodo, lata de ' +
+        'célula 18650, dissipador novo — reflete o infravermelho e o termômetro lê <b>mais frio</b> ' +
+        'que o real, às vezes 20 °C a menos. Cole um pedacinho de fita isolante preta fosca na peça, ' +
+        'espere alguns segundos e meça <b>em cima da fita</b>.') +
+      '<div class="card-sec">' + nota('dica', '<b>Ele mede uma área, não um ponto.</b> Quanto mais ' +
+        'longe, maior o círculo que ele enxerga — e a leitura vira a média entre a peça e tudo em ' +
+        'volta. Em componente pequeno, chegue a poucos centímetros.') + '</div>' +
+    '</div>' +
+    '<div class="card card-sec">' +
+      '<h3>O que comprar</h3>' +
+      compra('Termômetro infravermelho', 'termometro infravermelho digital laser', 'R$ 60–150',
+             'Modelos muito baratos erram em superfície brilhante — o truque da fita preta resolve.') +
+      compra('Fita isolante preta fosca', 'fita isolante preta 19mm', 'R$ 5–12') +
+    '</div>';
+  },
 
   render() {
+    const st = this.st;
+    const abas =
+      '<div style="display:flex;justify-content:center;margin-bottom:16px"><div class="seg">' +
+        '<button class="' + (st.aba === 'calcular' ? 'ativo' : '') + '" data-aba="calcular">Vai esquentar?</button>' +
+        '<button class="' + (st.aba === 'medida' ? 'ativo' : '') + '" data-aba="medida">Medi, está normal?</button>' +
+      '</div></div>';
+
+    if (st.aba === 'medida') {
+      return cabecalho('Potência e calor', 'Você mediu uma temperatura. Vamos ver se ela é aceitável.') +
+        abas + this.renderMedida();
+    }
+    return cabecalho('Potência e calor', 'Todo watt que não vira trabalho vira calor. Aqui você vê quanto.') +
+      abas + this.renderCalculo();
+  },
+
+  renderCalculo() {
     const st = this.st;
     const p = st.v * (st.i / 1000);
     const m = MONTAGENS.filter((x) => x.id === st.montagem)[0] || MONTAGENS[0];
@@ -1875,7 +2017,6 @@ TOOLS.dissipacao = {
     const melhor = MONTAGENS.filter((x) => st.ambiente + p * x.rth <= 85)[0];
 
     return '' +
-    cabecalho('Potência e calor', 'Todo watt que não vira trabalho vira calor. Aqui você vê quanto.') +
     '<div class="card">' +
       '<div class="campos">' +
         '<div class="campo"><label for="dv">Tensão em cima do componente (V)</label>' +
@@ -1935,21 +2076,468 @@ TOOLS.dissipacao = {
 
   mount(raiz) {
     const self = this;
+    raiz.addEventListener('click', (ev) => {
+      const b = ev.target.closest('[data-aba]');
+      if (b) { self.st.aba = b.getAttribute('data-aba'); rerender(); }
+    });
     const pega = () => {
-      self.st.v = num($('#dv', raiz).value) || 0;
-      self.st.i = num($('#di', raiz).value) || 0;
-      self.st.montagem = $('#dm', raiz).value;
-      self.st.ambiente = num($('#da', raiz).value) || 0;
+      const g = (sel, atual) => { const el = $(sel, raiz); if (!el) return atual;
+        const v = num(el.value); return isFinite(v) ? v : atual; };
+      self.st.v = g('#dv', self.st.v);
+      self.st.i = g('#di', self.st.i);
+      self.st.ambiente = g('#da', self.st.ambiente);
+      self.st.medida = g('#tm', self.st.medida);
+      self.st.ambiente = g('#ta', self.st.ambiente);
+      const dm = $('#dm', raiz) || $('#tmo', raiz);
+      if (dm) self.st.montagem = dm.value;
+      const tp = $('#tp', raiz);
+      if (tp) self.st.peca = tp.value;
       rerender();
     };
-    ['#dv', '#di', '#dm', '#da'].forEach((s) => {
+    ['#dv', '#di', '#dm', '#da', '#tm', '#ta', '#tp', '#tmo'].forEach((s) => {
       const el = $(s, raiz);
       if (el) el.addEventListener('change', pega);
     });
   }
 };
 
-/* -------- 7.9 Baterias ---------------------------------------------------- */
+/* -------- 7.9 Essa chave aguenta DC? ------------------------------------- */
+
+/* Limiares de tensão de arco em contatos comuns de prata/cobre.
+   REGRA PRÁTICA de engenharia, não valor de datasheet. */
+const ARCO_BAIXO = 15;   // abaixo disso o arco DC não se sustenta
+const ARCO_ALTO = 30;    // acima disso o arco se sustenta com folga
+
+const CARGAS_CHAVE = [
+  { id: 'resistiva', nome: 'Resistiva (LED, aquecedor, resistência)', pico: 1 },
+  { id: 'motor', nome: 'Motor (escova, ventoinha, bomba)', pico: 3 },
+  { id: 'capacitiva', nome: 'Capacitiva (fonte, driver, módulo com capacitor grande)', pico: 5 }
+];
+
+TOOLS.chaveDC = {
+  nome: 'Essa chave aguenta DC?',
+  desc: 'O rating impresso é em AC. Em corrente contínua a conversa é outra.',
+  grupo: 'energia',
+  icone: 'chave',
+  pronto: true,
+  st: { ratingA: 3, ratingV: 250, ratingTipo: 'ac', vCirc: 4.2, iCont: 3,
+        carga: 'motor', mult: 3 },
+
+  analisar() {
+    const st = this.st;
+    const carga = CARGAS_CHAVE.filter((c) => c.id === st.carga)[0] || CARGAS_CHAVE[0];
+    const mult = st.carga === 'resistiva' ? 1 : Math.max(1, st.mult);
+    const iPico = st.iCont * mult;
+    const regime = st.vCirc < ARCO_BAIXO ? 'baixo' : 'alto';
+
+    // Capacidade estimada em DC
+    let capacidade, base;
+    if (st.ratingTipo === 'dc') {
+      capacidade = st.ratingA;
+      base = 'O fabricante já publicou o valor em DC — é ele que vale.';
+    } else if (regime === 'baixo') {
+      capacidade = st.ratingA;
+      base = 'Abaixo de ' + ARCO_BAIXO + ' V o arco não se sustenta, então a corrente em DC fica ' +
+             'próxima da nominal em AC. O que limita é o calor no contato.';
+    } else if (st.vCirc <= 48) {
+      capacidade = st.ratingA * 0.3;
+      base = 'Acima de ' + ARCO_BAIXO + ' V o arco se sustenta e a capacidade despenca. ' +
+             'Estimativa conservadora: cerca de 30% do valor em AC.';
+    } else {
+      capacidade = st.ratingA * 0.15;
+      base = 'Nessa tensão o arco é severo. Estimativa conservadora: cerca de 15% do valor em AC.';
+    }
+
+    const tensaoInsuficiente = st.ratingV < st.vCirc;
+    const exigido = Math.max(st.iCont * 2, iPico);
+    const margem = st.iCont > 0 ? capacidade / st.iCont : 0;
+
+    let veredito, classe;
+    if (tensaoInsuficiente) {
+      veredito = 'NÃO SERVE'; classe = 'perigo';
+    } else if (capacidade >= exigido) {
+      veredito = 'SERVE'; classe = 'dica';
+    } else if (capacidade >= st.iCont * 1.5 && capacidade >= iPico * 0.8) {
+      veredito = 'MARGINAL'; classe = 'aviso';
+    } else {
+      veredito = 'NÃO SERVE'; classe = 'perigo';
+    }
+
+    return { carga: carga, mult: mult, iPico: iPico, regime: regime, capacidade: capacidade,
+             base: base, exigido: exigido, margem: margem, veredito: veredito, classe: classe,
+             tensaoInsuficiente: tensaoInsuficiente,
+             sugerida: Math.ceil(exigido / 5) * 5 };
+  },
+
+  render() {
+    const st = this.st;
+    const a = this.analisar();
+
+    const explicacao = a.regime === 'baixo'
+      ? '<b>Regime de baixa tensão (abaixo de ' + ARCO_BAIXO + ' V).</b> Aqui o arco elétrico ' +
+        '<b>não se sustenta</b>: falta tensão para manter o caminho ionizado entre os contatos ' +
+        'quando eles se separam. Então o que mata a chave não é faísca — é <b>calor</b>. A corrente ' +
+        'aquece a pequena área onde os contatos se tocam, essa área oxida, a resistência sobe, ' +
+        'aquece mais, oxida mais. É uma avalanche que termina com os contatos degradados ou soldados.'
+      : '<b>Regime de arco sustentado (acima de ' + ARCO_BAIXO + ' V).</b> Em corrente alternada o ' +
+        'arco se apaga sozinho 100 ou 120 vezes por segundo, toda vez que a tensão passa por zero. ' +
+        'Em corrente contínua <b>não existe essa passagem por zero</b>: o arco, uma vez aberto, ' +
+        'continua queimando os contatos até que a distância baste para apagá-lo. Por isso a mesma ' +
+        'chave vale muito menos em DC.';
+
+    return '' +
+    cabecalho('Essa chave aguenta DC?', 'Rating de chave é quase sempre em AC. Em bateria, muda tudo.') +
+    '<div class="card">' +
+      '<div class="campos">' +
+        '<div class="campo"><label for="cra">Corrente impressa na chave (A)</label>' +
+          '<input type="number" id="cra" step="any" min="0" value="' + st.ratingA + '">' +
+          '<span class="ajuda">O “3A” de um “3A 250VAC”.</span></div>' +
+        '<div class="campo"><label for="crv">Tensão impressa (V)</label>' +
+          '<input type="number" id="crv" step="any" min="0" value="' + st.ratingV + '"></div>' +
+        '<div class="campo"><label for="crt">Esse rating é</label>' +
+          '<select id="crt">' +
+            '<option value="ac"' + (st.ratingTipo === 'ac' ? ' selected' : '') + '>AC (o normal)</option>' +
+            '<option value="dc"' + (st.ratingTipo === 'dc' ? ' selected' : '') + '>DC (raro, e vale mais)</option>' +
+          '</select></div>' +
+        '<div class="campo"><label for="cvc">Tensão do seu circuito (V DC)</label>' +
+          '<input type="number" id="cvc" step="any" min="0" value="' + st.vCirc + '"></div>' +
+        '<div class="campo"><label for="cic">Corrente contínua da carga (A)</label>' +
+          '<input type="number" id="cic" step="any" min="0" value="' + st.iCont + '"></div>' +
+        '<div class="campo"><label for="ccg">Tipo de carga</label>' +
+          '<select id="ccg">' + CARGAS_CHAVE.map((c) =>
+            '<option value="' + c.id + '"' + (st.carga === c.id ? ' selected' : '') + '>' +
+            esc(c.nome) + '</option>').join('') + '</select></div>' +
+        (st.carga !== 'resistiva'
+          ? '<div class="campo"><label for="cmu">Pico de arranque (× a contínua)</label>' +
+              '<input type="number" id="cmu" step="any" min="1" value="' + st.mult + '">' +
+              '<span class="ajuda">Motor parado puxa umas 3 vezes o normal até começar a girar.</span></div>'
+          : '') +
+      '</div>' +
+    '</div>' +
+    '<div class="card-sec">' +
+      resultadoGrande('Essa chave', a.veredito, [
+        'Precisa aguentar: <b>' + sig(a.exigido) + ' A</b>',
+        'Pico estimado: <b>' + sig(a.iPico) + ' A</b>',
+        'Capacidade em DC: <b>' + sig(a.capacidade) + ' A</b>',
+        'Margem: <b>' + sig(a.margem, 2) + '×</b>'
+      ]) +
+    '</div>' +
+    (a.tensaoInsuficiente
+      ? '<div class="card-sec">' + nota('perigo',
+          '<b>A tensão do rating é menor que a do seu circuito.</b> A chave é marcada para ' +
+          sig(st.ratingV) + ' V e você quer usar em ' + sig(st.vCirc) + ' V. Nem discuta corrente: ' +
+          'procure outra chave.') + '</div>'
+      : '<div class="card-sec">' + nota(a.classe,
+          a.veredito === 'SERVE'
+            ? '<b>Pode usar.</b> A capacidade estimada cobre a corrente contínua com o dobro de folga ' +
+              'e ainda aguenta o pico de arranque.'
+            : a.veredito === 'MARGINAL'
+              ? '<b>Passa raspando — eu não usaria.</b> A chave até liga, mas sem a folga de 2× ela ' +
+                'vai degradando a cada acionamento. Chave é peça de centavos; o aparelho, não.'
+              : '<b>Não use essa chave.</b> A corrente exigida passa do que ela aguenta em DC. ' +
+                'Procure uma de pelo menos <b>' + a.sugerida + ' A</b>.') + '</div>') +
+    '<div class="card card-sec">' +
+      '<h3>Por que AC e DC são coisas diferentes</h3>' +
+      nota(a.regime === 'baixo' ? 'dica' : 'aviso', explicacao) +
+      '<div class="card-sec">' + nota('', '<b>Base do cálculo.</b> ' + esc(a.base) + ' ' +
+        (st.ratingTipo === 'ac'
+          ? 'Isto é <b>regra prática de engenharia</b>, não valor de datasheet. Se o fabricante ' +
+            'publicar a especificação em DC dessa chave, é ela que manda — procure por “DC rating” ' +
+            'ou “resistive DC load” na folha de dados.'
+          : '')) + '</div>' +
+    '</div>' +
+    '<div class="card card-sec">' +
+      '<h3>A conta</h3>' +
+      conta([
+        '<span class="cmt">// pico de arranque</span>',
+        'I pico = ' + sig(st.iCont) + ' A × ' + sig(a.mult) + ' = <b>' + sig(a.iPico) + ' A</b>',
+        '<span class="cmt">// regra do app: chave com o dobro da corrente contínua</span>',
+        'exigido = maior entre (' + sig(st.iCont) + ' × 2) e ' + sig(a.iPico) + ' = <b>' + sig(a.exigido) + ' A</b>',
+        '<span class="cmt">// capacidade estimada em DC nesta tensão</span>',
+        'capacidade = <b>' + sig(a.capacidade) + ' A</b>',
+        '<span class="cmt">// margem sobre a corrente contínua</span>',
+        'margem = ' + sig(a.capacidade) + ' ÷ ' + sig(st.iCont) + ' = <b>' + sig(a.margem, 2) + '×</b>'
+      ]) +
+    '</div>' +
+    '<div class="card-sec">' + nota('perigo',
+      '<b>O modo de falha típico assusta.</b> Contato de chave subdimensionada não abre em brasa: ' +
+      'ele <b>solda fechado</b>. O aparelho passa a ligar sozinho no instante em que você conecta a ' +
+      'bateria, e o botão não desliga mais nada. Em ferramenta rotativa isso é acidente à espera.') + '</div>' +
+    (st.carga === 'motor'
+      ? '<div class="card-sec">' + nota('aviso',
+          '<b>Em ferramenta rotativa, prefira botão momentâneo.</b> O botão que só funciona enquanto ' +
+          'você segura é proteção, não incômodo: se a ferramenta escapar da mão, ela para. Com chave ' +
+          'de trava, ela continua girando no chão.') + '</div>'
+      : '') +
+    '<div class="card card-sec">' +
+      '<h3>O que comprar</h3>' +
+      compra('Botão momentâneo (pulsador) ' + a.sugerida + ' A', 'push button momentaneo 10A', 'R$ 8–25',
+             'Recuse anúncio que só informa rating em VAC quando o seu circuito passa de ' + ARCO_BAIXO + ' V DC.') +
+      compra('Interruptor pulsador 12 V', 'interruptor pulsador 12v 10a', 'R$ 10–30') +
+      compra('Gatilho de parafusadeira (sucata)', 'chave gatilho parafusadeira', 'R$ 15–40',
+             'É feito exatamente para corrente alta em DC. Confira o tamanho antes: não cabe em carcaça pequena.') +
+    '</div>';
+  },
+
+  mount(raiz) {
+    const self = this;
+    const pega = () => {
+      const g = (sel, atual) => { const el = $(sel, raiz); if (!el) return atual;
+        const v = num(el.value); return isFinite(v) ? v : atual; };
+      self.st.ratingA = g('#cra', self.st.ratingA);
+      self.st.ratingV = g('#crv', self.st.ratingV);
+      self.st.vCirc = g('#cvc', self.st.vCirc);
+      self.st.iCont = g('#cic', self.st.iCont);
+      self.st.ratingTipo = $('#crt', raiz).value;
+      const novaCarga = $('#ccg', raiz).value;
+      if (novaCarga !== self.st.carga) {
+        const c = CARGAS_CHAVE.filter((x) => x.id === novaCarga)[0];
+        self.st.mult = c ? c.pico : 1;
+      } else {
+        self.st.mult = g('#cmu', self.st.mult);
+      }
+      self.st.carga = novaCarga;
+      rerender();
+    };
+    ['#cra', '#crv', '#crt', '#cvc', '#cic', '#ccg', '#cmu'].forEach((s) => {
+      const el = $(s, raiz);
+      if (el) el.addEventListener('change', pega);
+    });
+  }
+};
+
+/* -------- 7.10 Meu motor não gira ---------------------------------------- */
+
+const SINTOMAS_MOTOR = [
+  { id: 'nada', nome: 'Nada. Totalmente parado', dica: 'Nenhum barulho, nenhum movimento.' },
+  { id: 'tranco', nome: 'Dá um tranco e para', dica: 'Estremece, tenta girar, desiste.' },
+  { id: 'fraco', nome: 'Gira fraco', dica: 'Roda, mas sem força e devagar.' },
+  { id: 'quente', nome: 'Gira e esquenta', dica: 'Funciona, mas aquece rápido demais.' }
+];
+
+TOOLS.motorDC = {
+  nome: 'Meu motor não gira',
+  desc: 'Diagnóstico de motor DC com escovas, passo a passo e com critério.',
+  grupo: 'energia',
+  icone: 'motor',
+  pronto: true,
+  st: { sintoma: null },
+
+  /* Blocos de teste, reaproveitados entre os ramos. */
+  testePilha() {
+    return '<div class="card card-sec">' +
+      '<h3>1. Teste da pilha AA — faça este primeiro, sempre</h3>' +
+      '<p class="card-desc">Encoste uma pilha alcalina AA comum nos dois terminais do motor, ' +
+      'por dois ou três segundos.</p>' +
+      nota('dica', '<b>Por que a pilha e não a fonte?</b> Uma pilha alcalina entrega 1 a 2 A sem ' +
+        'reclamar e <b>não tem proteção nenhuma para desarmar</b>. Fonte de bancada, fonte de PC e ' +
+        'carregador têm — e desarmam justamente no pico de partida do motor, que é quando ele mais ' +
+        'puxa corrente. Se o motor gira com 1,5 V da pilha e não gira na sua fonte, <b>o problema é ' +
+        'a fonte</b>, não o motor.') +
+      '<div class="card-sec"><div class="rolagem"><table class="tabela">' +
+        '<tr><th>O que acontece</th><th>O que significa</th></tr>' +
+        '<tr><td>Gira, mesmo que devagar</td><td>O motor está vivo. Investigue a alimentação.</td></tr>' +
+        '<tr><td>Só treme ou estala</td><td>Contato parcial no coletor. Vá para o teste 2.</td></tr>' +
+        '<tr><td>Absolutamente nada</td><td>Provável circuito aberto. Vá para o teste 2.</td></tr>' +
+      '</table></div></div>' +
+    '</div>';
+  },
+
+  testeResistencia() {
+    return '<div class="card card-sec">' +
+      '<h3>2. Resistência girando o eixo</h3>' +
+      '<p class="card-desc">Ohmímetro nos dois terminais do motor. Gire o eixo <b>bem devagar</b>, ' +
+      'com a mão, uma volta completa, olhando o número o tempo todo.</p>' +
+      nota('dica', '<b>Antes de tudo, desconte os cabos.</b> Encoste as duas pontas de prova uma na ' +
+        'outra e anote o que aparece — normalmente entre 0,2 e 0,5 Ω. Esse valor é do multímetro, ' +
+        'não do motor, e você subtrai da leitura.') +
+      '<div class="card-sec"><div class="rolagem"><table class="tabela">' +
+        '<tr><th>Leitura</th><th>Diagnóstico</th></tr>' +
+        '<tr><td class="num">Baixa e variando suave<br>(0,5 a 5 Ω em motor pequeno)</td>' +
+          '<td><b>Normal.</b> A variação é esperada: conforme o coletor gira, as escovas pegam ' +
+          'combinações diferentes de enrolamento.</td></tr>' +
+        '<tr><td class="num">Abre (OL) em algum ponto</td>' +
+          '<td>Segmento do coletor sem contato — sujeira, escova gasta ou espira rompida naquele setor.</td></tr>' +
+        '<tr><td class="num">Alta e estável</td>' +
+          '<td>Resistência de contato: resíduo, óxido ou verniz entre escova e coletor.</td></tr>' +
+        '<tr><td class="num">OL o tempo todo</td>' +
+          '<td>Enrolamento aberto ou escova sem tocar o coletor. Abra e olhe.</td></tr>' +
+      '</table></div></div>' +
+    '</div>';
+  },
+
+  testeTensao() {
+    return '<div class="card card-sec">' +
+      '<h3>3. Teste na tensão nominal</h3>' +
+      '<p class="card-desc">Alimente o motor na tensão de trabalho dele e meça com o multímetro ' +
+      '<b>nos terminais do motor</b> — não nos bornes da fonte.</p>' +
+      nota('aviso', '<b>É aqui que quase todo mundo se engana.</b> A diferença entre a tensão na ' +
+        'fonte e a tensão no motor é queda no cabo, na garra jacaré e no contato. Com cabo fino e ' +
+        'corrente alta, some fácil 1 V ou mais — e você fica achando que o motor é ruim quando ele ' +
+        'nunca recebeu a tensão que você pensou que estava mandando.') +
+    '</div>';
+  },
+
+  armadilhaATX() {
+    return '<div class="card card-sec" style="border-color:rgba(245,165,36,.35)">' +
+      '<h3>⚠ A armadilha da fonte de PC (ATX)</h3>' +
+      '<p class="card-desc">Fonte ATX reaproveitada é ótima na bancada e péssima para testar motor. ' +
+      'Ela produz exatamente o sintoma do “tranco” num motor perfeitamente bom.</p>' +
+      '<div class="rolagem"><table class="tabela">' +
+        '<tr><th>Causa</th><th>O que acontece</th></tr>' +
+        '<tr><td>Proteção de sobrecorrente</td>' +
+          '<td>O pico de partida dispara a proteção. Ela corta, tenta de novo, corta — o famoso ' +
+          '<i>hiccup</i>. O motor recebe pulsos e só dá trancos.</td></tr>' +
+        '<tr><td>Carga mínima</td>' +
+          '<td>Muitas ATX exigem consumo nos outros trilhos para regular. Sem isso, a saída oscila.</td></tr>' +
+        '<tr><td>Cabo fino e garra jacaré</td>' +
+          '<td>Queda de tensão bem onde importa: no instante do arranque.</td></tr>' +
+        '<tr><td>Sense do trilho de 3,3 V</td>' +
+          '<td>Se o fio de sense (marrom, em muitas fontes) não estiver ligado ao 3,3 V, o trilho ' +
+          'nem regula direito.</td></tr>' +
+      '</table></div>' +
+      '<div class="card-sec">' + nota('dica', 'Um caso real deste projeto: motor de micro retífica ' +
+        'que só dava tranco em fonte ATX de 3,3 V foi dado como morto. Girou normalmente com uma ' +
+        'pilha AA de 1,5 V. O defeito estava no instrumento de teste, não na peça.') + '</div>' +
+    '</div>';
+  },
+
+  limpeza() {
+    return '<div class="card card-sec">' +
+      '<h3>Limpeza — motor com vazamento de pilha alcalina</h3>' +
+      '<ol style="color:var(--txt-2);font-size:14px;line-height:1.7;padding-left:18px;margin:8px 0 0">' +
+        '<li><b>Neutralize o resíduo</b> com um pouco de vinagre, só nas partes plásticas e na ' +
+          'carcaça. O vazamento alcalino é básico; o vinagre é ácido fraco e neutraliza.</li>' +
+        '<li><b>Álcool isopropílico 99%</b> com fricção, para tirar o que sobrou. Cotonete ou ' +
+          'escova macia no coletor.</li>' +
+        '<li><b>Limpa contatos sob pressão</b>, jogando o jato no coletor enquanto gira o eixo.</li>' +
+        '<li><b>Lubrifique os mancais</b> com uma gota de óleo fino. Só os mancais.</li>' +
+      '</ol>' +
+      '<div class="card-sec">' + nota('perigo',
+        '<b>Nunca passe produto dielétrico no coletor.</b> Spray protetivo do tipo CorrosionX e ' +
+        'similares são <b>isolantes</b> — é para isso que servem. O coletor precisa exatamente do ' +
+        'contrário: conduzir. Passar ali deixa o motor pior do que estava. Nos mancais, pode.') + '</div>' +
+    '</div>';
+  },
+
+  avisos() {
+    return '<div class="card-sec">' + nota('perigo',
+      '<b>Motor parado é praticamente um curto.</b> Girando, ele gera uma tensão contrária (FCEM) ' +
+      'que segura a corrente. Parado, não há nada disso: a corrente é limitada só pela resistência ' +
+      'do cobre. Em 5 V com 1 Ω são 5 A, e P = I²R dá <b>25 W</b> torrando dentro de um enrolamento ' +
+      'que não está ventilando. O verniz do fio começa a degradar em 10 a 20 segundos. ' +
+      '<b>Teste com rotor travado: 2 segundos, no máximo.</b>') +
+      '<div class="card-sec">' + nota('aviso',
+        '<b>O borne de corrente do multímetro tem fusível de 4 A ou 10 A.</b> Medir corrente de ' +
+        'motor com rotor travado estoura esse fusível — e em multímetro barato, às vezes leva junto ' +
+        'a trilha da placa. Meça corrente com o motor girando livre, ou use alicate amperímetro.') + '</div>' +
+      '<div class="card-sec">' + nota('aviso',
+        '<b>Eixo com rosca ou pinça morde.</b> Motor de retífica e de furadeira tem eixo que agarra ' +
+        'pano, fio de cabelo e dedo. Segure pela carcaça, nunca pelo eixo, e tire o pano da bancada ' +
+        'antes de energizar.') + '</div>' +
+    '</div>';
+  },
+
+  render() {
+    const st = this.st;
+
+    if (!st.sintoma) {
+      return cabecalho('Meu motor não gira', 'Método em vez de chute. Comece pelo sintoma.') +
+        '<div class="card">' +
+          '<h3>O que acontece quando você liga?</h3>' +
+          '<p class="card-desc">Escolha o que mais se parece com o seu caso. Cada resposta leva a um ' +
+          'roteiro diferente.</p>' +
+        '</div>' +
+        '<div class="grade card-sec">' + SINTOMAS_MOTOR.map((s) =>
+          '<button class="card" data-sintoma="' + s.id + '" style="' + corGrupo('energia') + '">' +
+            '<div class="card-icone">' + icone('motor') + '</div>' +
+            '<h3>' + esc(s.nome) + '</h3>' +
+            '<div class="card-desc">' + esc(s.dica) + '</div>' +
+          '</button>').join('') + '</div>' +
+        '<div class="card-sec">' + nota('dica',
+          '<b>Antes de qualquer coisa:</b> a maior parte dos motores dados como queimados está viva. ' +
+          'O erro mais comum não é diagnosticar o motor errado — é <b>diagnosticar com a fonte ' +
+          'errada</b>. Qualquer que seja o seu sintoma, o primeiro teste é o da pilha AA.') + '</div>';
+    }
+
+    const s = SINTOMAS_MOTOR.filter((x) => x.id === st.sintoma)[0];
+    const voltar = '<div class="btn-linha" style="margin-top:0">' +
+      '<button class="btn" id="outroSintoma">Escolher outro sintoma</button></div>';
+
+    let hipoteses, blocos;
+
+    if (st.sintoma === 'nada') {
+      hipoteses = [
+        ['Escova sem contato', 'Gasta até o fim, presa, ou mola de pressão cansada. É a causa mais comum e a mais fácil de resolver.'],
+        ['Enrolamento aberto', 'Fio rompido dentro da bobina. O ohmímetro mostra OL em qualquer posição do eixo.'],
+        ['Coletor sujo ou oxidado', 'Camada isolante entre escova e cobre. Comum em motor guardado ou com vazamento de pilha.'],
+        ['Alimentação não chega', 'Cabo partido, solda fria, contato do porta-pilha corroído. Meça no terminal do motor.']
+      ];
+      blocos = this.testePilha() + this.testeResistencia() + this.limpeza();
+    } else if (st.sintoma === 'tranco') {
+      hipoteses = [
+        ['A fonte está entrando em proteção', 'A hipótese número um, e a mais ignorada. O tranco é a cara do hiccup mode.'],
+        ['Contato marginal no coletor', 'O motor pega em uma posição e perde na seguinte.'],
+        ['Escova quase no fim', 'Toca de leve, não sustenta a corrente de partida.'],
+        ['Travamento mecânico', 'Mancal seco, sujeira ou peça encostando. Gire o eixo com a mão: deve girar livre.']
+      ];
+      blocos = this.testePilha() + this.armadilhaATX() + this.testeResistencia() + this.testeTensao();
+    } else if (st.sintoma === 'fraco') {
+      hipoteses = [
+        ['Tensão não está chegando', 'Queda em cabo fino, garra ruim ou fonte fraca. Meça no terminal do motor.'],
+        ['Escova gasta ou mola fraca', 'Contato pior significa mais resistência em série, menos corrente, menos força.'],
+        ['Mancal seco ou empenado', 'Atrito rouba torque. Desligado, o eixo deve girar solto com um peteleco.'],
+        ['Coletor com resíduo', 'Resistência de contato alta. Aparece no teste 2 como valor alto e estável.'],
+        ['Ímã enfraquecido', 'Raro, mas acontece em motor que trabalhou muito quente.']
+      ];
+      blocos = this.testePilha() + this.testeTensao() + this.testeResistencia() + this.limpeza();
+    } else {
+      hipoteses = [
+        ['Atrito mecânico', 'Mancal seco, rolamento gasto, eixo desalinhado. É a causa mais provável e a mais barata.'],
+        ['Curto entre espiras', 'Verniz rompido dentro da bobina. A resistência medida sai bem abaixo do esperado e o motor esquenta sem carga.'],
+        ['Motor trabalhando acima do nominal', 'Tensão alta demais, ou carga mecânica maior do que ele foi feito para aguentar.'],
+        ['Ventilação bloqueada', 'Entrada de ar entupida de pó — comum em ferramenta que corta madeira ou gesso.']
+      ];
+      blocos = this.testePilha() + this.testeResistencia() + this.testeTensao() +
+        '<div class="card-sec">' + nota('dica',
+          'Meça a temperatura com a ferramenta <b>Potência e calor</b>, na aba “Medi, está normal?”. ' +
+          'Para motor pequeno, morno é normal; quente a ponto de não segurar a mão por três segundos ' +
+          'já é sinal de problema.') + '</div>' + this.limpeza();
+    }
+
+    return cabecalho('Meu motor não gira', s.nome) + voltar +
+      '<div class="card card-sec">' +
+        '<h3>Hipóteses, da mais provável para a menos</h3>' +
+        '<div class="rolagem"><table class="tabela">' +
+          '<tr><th>Causa</th><th>Por quê</th></tr>' +
+          hipoteses.map((h) => '<tr><td><b>' + esc(h[0]) + '</b></td><td>' + esc(h[1]) + '</td></tr>').join('') +
+        '</table></div>' +
+      '</div>' +
+      blocos +
+      this.avisos() +
+      '<div class="card card-sec">' +
+        '<h3>O que comprar</h3>' +
+        compra('Escova de carvão para motor DC', 'escova de carvao motor dc kit', 'R$ 10–35',
+               'Meça a antiga: largura, espessura e comprimento. Escova quase sempre é peça genérica.') +
+        compra('Limpa contatos em spray', 'limpa contato spray eletronica', 'R$ 15–30') +
+        compra('Álcool isopropílico 99%', 'alcool isopropilico 99 1 litro', 'R$ 25–50',
+               'O de 70% tem água demais para eletrônica.') +
+        compra('Alicate amperímetro DC', 'alicate amperimetro corrente continua dc', 'R$ 120–300',
+               'Cuidado: muitos alicates baratos medem corrente só em AC. Para bateria, tem que ser DC.') +
+      '</div>';
+  },
+
+  mount(raiz) {
+    const self = this;
+    raiz.addEventListener('click', (ev) => {
+      const b = ev.target.closest('[data-sintoma]');
+      if (b) { self.st.sintoma = b.getAttribute('data-sintoma'); rerender(); return; }
+      if (ev.target.closest('#outroSintoma')) { self.st.sintoma = null; rerender(); }
+    });
+  }
+};
+
+/* -------- 7.11 Baterias --------------------------------------------------- */
 
 /** Bloco de segurança de lítio. Aparece em toda tela que monta pack. */
 function avisoLitio(extra) {
@@ -2248,7 +2836,240 @@ TOOLS.bms = {
   }
 };
 
-/* -------- 7.11 Autonomia -------------------------------------------------- */
+/* -------- Testar a BMS antes de montar ------------------------------------ */
+
+/* Critérios de aceitação por química, em volts POR CÉLULA.
+   Faixas típicas das BMS de prateleira — confira a especificação da sua placa. */
+const CRITERIOS_BMS = {
+  liion:   { uvMin: 2.4, uvMax: 2.9, recup: 3.0, ovMin: 4.2, ovMax: 4.3 },
+  lifepo4: { uvMin: 2.0, uvMax: 2.5, recup: 2.6, ovMin: 3.6, ovMax: 3.75 }
+};
+
+const TESTES_BMS = [
+  { id: 'uv', nome: 'Sobredescarga (corte por tensão baixa)',
+    porque: 'É a proteção que impede a célula de ser levada abaixo do ponto de não retorno. ' +
+            'Célula descarregada demais não volta — e algumas voltam por fora e falham por dentro.' },
+  { id: 'rec', nome: 'Recuperação depois do corte',
+    porque: 'De nada adianta cortar e não religar. BMS que corta e trava obriga a desmontar o pack ' +
+            'para reanimar, e muita gente acaba fazendo isso com fio direto, sem proteção nenhuma.' },
+  { id: 'oc', nome: 'Sobrecorrente',
+    porque: 'Protege contra o aparelho travado ou o motor preso, que é quando a corrente dispara ' +
+            'sem que nada esteja em curto.' },
+  { id: 'curto', nome: 'Curto-circuito',
+    porque: 'A última barreira. Célula de lítio em curto entrega centenas de amperes e vira ' +
+            'incêndio em segundos.' }
+];
+
+TOOLS.bmsTeste = {
+  nome: 'Testar a BMS',
+  desc: 'A placa chegou pelo correio. Ela funciona mesmo? Quatro testes antes de montar.',
+  grupo: 'baterias',
+  icone: 'checklist',
+  pronto: true,
+  st: null,
+
+  init() {
+    if (this.st) return;
+    const salvo = Store.ler('bmsTeste', null);
+    this.st = salvo && salvo.resultados
+      ? salvo
+      : { quim: 'liion', s: 1, correnteBms: 8, temFonte: 'sim',
+          resultados: { uv: null, rec: null, oc: null, curto: null } };
+  },
+
+  salvarEstado() { Store.gravar('bmsTeste', this.st); rerender(); },
+
+  render() {
+    this.init();
+    const st = this.st;
+    const c = CRITERIOS_BMS[st.quim] || CRITERIOS_BMS.liion;
+    const q = QUIMICAS[st.quim];
+    const s = Math.max(1, Math.min(20, Math.floor(st.s)));
+    const semFonte = st.temFonte === 'nao';
+
+    const vals = {
+      uv: sig(c.uvMin) + ' a ' + sig(c.uvMax) + ' V por célula' +
+          (s > 1 ? ' (' + sig(c.uvMin * s) + ' a ' + sig(c.uvMax * s) + ' V no pack)' : ''),
+      rec: 'em torno de ' + sig(c.recup) + ' V por célula' +
+          (s > 1 ? ' (' + sig(c.recup * s) + ' V no pack)' : ''),
+      oc: 'abaixo de ' + sig(st.correnteBms) + ' A, sem esquentar antes de cortar',
+      curto: 'corte instantâneo, sem faísca sustentada'
+    };
+
+    const feitos = TESTES_BMS.filter((t) => st.resultados[t.id] != null).length;
+    const falhou = TESTES_BMS.filter((t) => st.resultados[t.id] === 'falhou');
+    const passou = TESTES_BMS.filter((t) => st.resultados[t.id] === 'ok');
+    const completo = feitos === TESTES_BMS.length;
+
+    let veredito, classeV, textoV;
+    if (falhou.length) {
+      veredito = 'REPROVADA'; classeV = 'perigo';
+      textoV = '<b>Essa placa vai para o lixo, não para dentro do aparelho.</b> Ela falhou em ' +
+        falhou.map((t) => '“' + esc(t.nome.toLowerCase()) + '”').join(' e ') + '. ' +
+        'Uma BMS custa poucos reais; o que ela protege, não. Não existe “falhou só num teste, mas ' +
+        'dá pra usar com cuidado” — cuidado não desliga nada às três da manhã.';
+    } else if (completo) {
+      veredito = 'APROVADA'; classeV = 'dica';
+      textoV = '<b>Passou nos quatro.</b> Pode montar. Anote o resultado junto do projeto: se um dia ' +
+        'o pack der problema, você vai querer saber que a proteção foi conferida na bancada.';
+    } else {
+      veredito = feitos + ' de 4'; classeV = '';
+      textoV = 'Marque o resultado de cada teste abaixo. Enquanto os quatro não passarem, a placa ' +
+        'não entra no aparelho.';
+    }
+
+    return '' +
+    cabecalho('Testar a BMS', 'A placa que chegou pelo correio é a única coisa entre a célula e o curto.') +
+    nota('perigo',
+      '<b>Faça isto antes de soldar qualquer coisa na célula.</b> Célula 18650 nua — principalmente ' +
+      'a marcada “OEM only” no plástico — <b>não tem proteção nenhuma por dentro</b>. Toda a ' +
+      'segurança do seu pack depende dessa plaquinha de dez reais que você ainda não testou.') +
+    '<div class="card card-sec">' +
+      '<div class="campos">' +
+        '<div class="campo"><label for="bq">Química das células</label>' +
+          '<select id="bq">' + Object.keys(QUIMICAS).map((k) =>
+            '<option value="' + k + '"' + (st.quim === k ? ' selected' : '') + '>' +
+            esc(QUIMICAS[k].nome) + '</option>').join('') + '</select></div>' +
+        '<div class="campo"><label for="bts">Quantas células em série (S)</label>' +
+          '<input type="number" id="bts" min="1" max="20" step="1" value="' + s + '"></div>' +
+        '<div class="campo"><label for="btc">Corrente nominal da BMS (A)</label>' +
+          '<input type="number" id="btc" step="any" min="0" value="' + st.correnteBms + '">' +
+          '<span class="ajuda">O número que está escrito no anúncio ou na placa.</span></div>' +
+        '<div class="campo"><label for="btf">Você tem fonte de bancada ajustável?</label>' +
+          '<select id="btf">' +
+            '<option value="sim"' + (!semFonte ? ' selected' : '') + '>Sim</option>' +
+            '<option value="nao"' + (semFonte ? ' selected' : '') + '>Não tenho</option>' +
+          '</select></div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="card-sec">' +
+      resultadoGrande('Situação da placa', veredito, [
+        'Passaram: <b>' + passou.length + '</b>',
+        'Falharam: <b>' + falhou.length + '</b>',
+        'Química: <b>' + esc(q.nome) + '</b>'
+      ]) +
+    '</div>' +
+    '<div class="card-sec">' + nota(classeV, textoV) + '</div>' +
+    (semFonte
+      ? '<div class="card-sec">' + nota('aviso',
+          '<b>Sem fonte ajustável, dá para fazer o mais importante.</b> Ligue uma carga resistiva ' +
+          'conhecida na saída da BMS — uma lâmpada automotiva de 12 V ou um resistor de potência ' +
+          'servem — e acompanhe a tensão da célula com o multímetro enquanto ela descarrega. ' +
+          'Anote em que tensão a BMS corta. É mais lento e menos preciso, mas verifica a proteção ' +
+          'que mais importa: a de descarga profunda. Os testes de sobrecorrente e curto, faça ' +
+          'exatamente como descrito abaixo — eles não precisam de fonte ajustável.') + '</div>'
+      : '') +
+    '<div class="card card-sec">' +
+      '<h3>Os quatro testes</h3>' +
+      TESTES_BMS.map((t) => {
+        const r = st.resultados[t.id];
+        const comoFazer = {
+          uv: semFonte
+            ? 'Descarregue a célula pela saída da BMS com uma carga conhecida, medindo a tensão da ' +
+              'célula de tempos em tempos. Anote em que valor a saída morre.'
+            : 'Ligue a fonte ajustável no lugar da célula, começando em ' + sig(3.2 * s) +
+              ' V. Baixe devagar, um décimo de volt por vez, medindo a saída da BMS.',
+          rec: 'Depois do corte, suba a tensão de volta devagar e veja em que ponto a saída volta ' +
+               'a ter tensão.',
+          oc: 'Com a célula ligada, aumente a carga aos poucos — resistores em paralelo, lâmpadas, ' +
+              'carga eletrônica — medindo a corrente até a BMS cortar.',
+          curto: 'Com um fio grosso e curto, encoste a saída P+ na P− por um instante — menos de ' +
+                 'meio segundo. Faça longe do rosto, com óculos de proteção, e com a célula em ' +
+                 'meia carga.'
+        }[t.id];
+        return '<div class="teste-bms' + (r ? ' feito-' + r : '') + '">' +
+          '<div class="teste-cabeca">' +
+            '<b>' + esc(t.nome) + '</b>' +
+            (r ? '<span class="teste-selo ' + r + '">' + (r === 'ok' ? 'passou' : 'falhou') + '</span>' : '') +
+          '</div>' +
+          '<div class="card-desc"><b>Por que importa:</b> ' + esc(t.porque) + '</div>' +
+          '<div class="card-desc"><b>Como fazer:</b> ' + esc(comoFazer) + '</div>' +
+          '<div class="card-desc"><b>Aceita se:</b> ' + esc(vals[t.id]) + '</div>' +
+          '<div class="btn-linha">' +
+            '<button class="btn' + (r === 'ok' ? ' primario' : '') + '" data-teste="' + t.id + '" data-res="ok">Passou</button>' +
+            '<button class="btn" data-teste="' + t.id + '" data-res="falhou" ' +
+              'style="' + (r === 'falhou' ? 'border-color:var(--vermelho);' : '') + 'color:var(--vermelho)">Falhou</button>' +
+            (r ? '<button class="btn" data-teste="' + t.id + '" data-res="limpar">Desmarcar</button>' : '') +
+          '</div>' +
+        '</div>';
+      }).join('') +
+    '</div>' +
+    (completo && !falhou.length
+      ? '<div class="btn-linha"><button class="btn primario" id="salvarTeste">Salvar resultado em Meus projetos</button></div>'
+      : '') +
+    '<div class="card card-sec">' +
+      '<h3>Uma segunda barreira que custa centavos</h3>' +
+      '<p class="card-desc">A BMS pode falhar — é eletrônica, como qualquer outra. Um <b>fusível PTC ' +
+      'rearmável</b> (polyfuse) em série com o positivo do pack, <b>antes</b> da BMS, cobre justamente ' +
+      'essa falha: em sobrecorrente ele esquenta, a resistência dispara e ele corta sozinho. Quando ' +
+      'esfria, volta a conduzir — não precisa trocar nada.</p>' +
+      conta([
+        '<span class="cmt">// escolha o PTC pela corrente de trabalho do pack</span>',
+        'I hold ≈ corrente normal de uso  (ele NÃO desarma aqui)',
+        'I trip ≈ 2 × I hold             (ele desarma acima disso)',
+        '<span class="cmt">// para uma ferramenta que puxa 3 A contínuos</span>',
+        'PTC de <b>3 A hold</b> → desarma perto de 6 A'
+      ]) +
+      '<p class="card-desc">Não substitui a BMS: o PTC não sabe nada de tensão de célula, só de ' +
+      'corrente. É cinto <b>além</b> do suspensório.</p>' +
+    '</div>' +
+    '<div class="card-sec">' + avisoLitio(
+      'Durante os testes, mantenha a célula em meia carga, sobre superfície que não pega fogo, ' +
+      'com um balde de areia por perto e sem nada inflamável na bancada.') + '</div>' +
+    '<div class="card card-sec">' +
+      '<h3>O que comprar</h3>' +
+      compra('Fusível PTC rearmável (polyfuse)', 'fusivel ptc rearmavel kit sortido', 'R$ 15–40 o kit',
+             'Compre pela corrente de hold, não pela de trip.') +
+      compra('Polyfuse 5 A radial', 'polyfuse 5a radial ptc', 'R$ 10–25') +
+      compra('Fonte de bancada ajustável', 'fonte de bancada ajustavel 30v 5a', 'R$ 250–600',
+             'Com limitador de corrente. É o instrumento que mais evita prejuízo na bancada.') +
+      compra('Carga eletrônica DC', 'carga eletronica dc 150w testador', 'R$ 250–500',
+             'Só para quem for além do básico — dá para começar com resistores de potência.') +
+    '</div>';
+  },
+
+  mount(raiz) {
+    const self = this;
+    raiz.addEventListener('click', (ev) => {
+      const bt = ev.target.closest('[data-teste]');
+      if (bt) {
+        const id = bt.getAttribute('data-teste');
+        const res = bt.getAttribute('data-res');
+        self.st.resultados[id] = res === 'limpar' ? null : res;
+        self.salvarEstado();
+        return;
+      }
+      if (ev.target.closest('#salvarTeste')) {
+        const q = QUIMICAS[self.st.quim];
+        TOOLS.projetos.salvar({
+          tipo: 'nota',
+          nome: 'BMS ' + self.st.s + 'S ' + self.st.correnteBms + ' A — aprovada',
+          prosa: 'Teste de BMS realizado em ' + dataBR(new Date().toISOString().slice(0, 10)) + '.\n\n' +
+            'Química: ' + q.nome + '\n' +
+            'Arranjo: ' + self.st.s + 'S\n' +
+            'Corrente nominal: ' + self.st.correnteBms + ' A\n\n' +
+            TESTES_BMS.map((t) => '- ' + t.nome + ': ' +
+              (self.st.resultados[t.id] === 'ok' ? 'PASSOU' : 'FALHOU')).join('\n') +
+            '\n\nPlaca liberada para montagem.'
+        });
+        return;
+      }
+    });
+    const pega = () => {
+      self.st.quim = $('#bq', raiz).value;
+      self.st.s = Math.max(1, Math.min(20, Math.floor(num($('#bts', raiz).value) || 1)));
+      self.st.correnteBms = num($('#btc', raiz).value) || 8;
+      self.st.temFonte = $('#btf', raiz).value;
+      self.salvarEstado();
+    };
+    ['#bq', '#bts', '#btc', '#btf'].forEach((s) => {
+      const el = $(s, raiz);
+      if (el) el.addEventListener('change', pega);
+    });
+  }
+};
+
+/* -------- Autonomia ------------------------------------------------------- */
 
 TOOLS.autonomia = {
   nome: 'Autonomia',
