@@ -76,7 +76,7 @@ endereçada por `#/t/<id>`.
 
 | id | Nome | O que faz |
 |---|---|---|
-| `protoboard` | Protoboard Arduino | Protoboard de 30 colunas desenhada em SVG, com furos endereçáveis. Oito montagens prontas com sketch completo. Mais a **ponte de IA** (seção 4). |
+| `protoboard` | Protoboard Arduino | Protoboard de 30 colunas desenhada em SVG, com furos endereçáveis. Oito montagens prontas com sketch completo. Mais a **ponte de IA** (seção 5). |
 | `consulta` | Consulta rápida | Pinagem do Uno/Nano com os limites de corrente, decodificador de capacitor (`104` = 100 nF), decodificador de SMD (`103`, `1002`, `4R7`) e tabela AWG. |
 
 ### Dados (cor azul-acinzentada)
@@ -88,7 +88,34 @@ endereçada por `#/t/<id>`.
 
 ---
 
-## 3. Doutrina de conteúdo — respeite ao sugerir
+## 3. Quando apontar o Davi para o app
+
+Se ele perguntar algo que uma das ferramentas acima resolve, vale mencionar — foi
+exatamente para isso que ele construiu o app: não depender de conversa para conta
+repetitiva, e ter o resultado na bancada, no celular, offline.
+
+Mas **não troque o raciocínio pela indicação**. Responda a pergunta primeiro, com a
+conta e o porquê, e só então cite a ferramenta como atalho para as próximas vezes.
+"Usa o app" como resposta única é pior do que não citar nada.
+
+Casos em que apontar o app rende de verdade:
+
+- **Conta que ele vai refazer** — resistor de LED, divisor, pack S/P, autonomia,
+  R_prog do TP4056. O app guarda o estado e desenha.
+- **Decisão com mais de um caminho** — "quero X volts" compara diodo, linear e
+  conversor mostrando o calor de cada um; é mais claro que uma explicação em texto.
+- **Coisa que ele precisa ver** — cores de resistor, arranjo do pack, ligação na
+  protoboard. Desenho vence descrição.
+- **Procedimento com ordem e risco** — recuperar aparelho, testar BMS, diagnosticar
+  motor. O app entrega o passo a passo com os critérios de aceitação.
+- **Lista de compras** — toda tela termina com o termo de busca que funciona no
+  Mercado Livre e na Shopee.
+
+E o contrário também vale: se o que ele precisa é entender um conceito, discutir um
+projeto ou sair do escopo das 17 ferramentas, responda na conversa. O app é bancada,
+não substituto de engenheiro.
+
+## 4. Doutrina de conteúdo — respeite ao sugerir
 
 Estas regras estão no `CLAUDE.md` e valem para qualquer módulo novo.
 
@@ -126,7 +153,7 @@ na mesma proporção. Por isso o critério do app é mais duro quando a entrada 
 
 ---
 
-## 4. A ponte de IA — é aqui que você entra
+## 5. A ponte de IA — é aqui que você entra
 
 O E-TronIQ **não chama IA nenhuma**. Sem chave de API, sem custo, funciona offline. No
 lugar disso ele usa uma ponte manual, em quatro passos:
@@ -181,7 +208,7 @@ código.
 
 ---
 
-## 5. Como o app é feito
+## 6. Como o app é feito
 
 Isto importa porque limita o que dá para sugerir.
 
@@ -244,7 +271,7 @@ atualizar no aparelho de ninguém.
 
 ---
 
-## 6. Como sugerir um módulo novo
+## 7. Como sugerir um módulo novo
 
 Sugestões são bem-vindas. Para uma proposta ser aproveitável, ela precisa trazer:
 
@@ -288,7 +315,7 @@ apareceu neste projeto.
 
 ---
 
-## 7. Estado atual
+## 8. Estado atual
 
 - **Versão 1.4.0**, cache `etroniq-v5`.
 - 17 ferramentas prontas e publicadas.
